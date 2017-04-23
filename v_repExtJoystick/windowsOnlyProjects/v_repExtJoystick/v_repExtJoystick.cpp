@@ -33,20 +33,20 @@
 //      details.
 //
 
-BEGIN_MESSAGE_MAP(Cv_repExtJoystickApp, CWinApp)
-END_MESSAGE_MAP()
-
-Cv_repExtJoystickApp::Cv_repExtJoystickApp()
-{
-}
-
-Cv_repExtJoystickApp theApp;
-
-BOOL Cv_repExtJoystickApp::InitInstance()
-{
-    CWinApp::InitInstance();
-    return TRUE;
-}
+//BEGIN_MESSAGE_MAP(Cv_repExtJoystickApp, CWinApp)
+//END_MESSAGE_MAP()
+//
+//Cv_repExtJoystickApp::Cv_repExtJoystickApp()
+//{
+//}
+//
+//Cv_repExtJoystickApp theApp;
+//
+//BOOL Cv_repExtJoystickApp::InitInstance()
+//{
+//    CWinApp::InitInstance();
+//    return TRUE;
+//}
 
 
 
