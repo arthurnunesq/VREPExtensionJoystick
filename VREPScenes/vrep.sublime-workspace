@@ -1,0 +1,333 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "src/lua/ChildScriptBase.lua",
+			"settings":
+			{
+				"buffer_size": 1216,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"contents": "require 'class'\napi = require('api')\nChildScriptBase = require('ChildScriptBase')\n\nlocal Vehicle = class(ChildScriptBase, function(self,scriptHandle)\n    simAddStatusbarMessage(\"Vehicle ctor\")\n\n    ChildScriptBase.init(self,scriptHandle)\n\n    self.vehicleName = self.objName\n    self.vehicleRefHandle = api.simGetChildObjectHandle(self.objHandle, 'rearAxleRef')\n    self.steering = api.simGetChildObjectHandle(self.objHandle, 'steering')\n    self.steeringWheel = api.simGetChildObjectHandle(self.objHandle, 'steeringWheelJoint')\n\n    self.axle1LeftSteering = api.simGetChildObjectHandle(self.objHandle, 'axle1LeftSteering')\n    self.axle1RightSteering = api.simGetChildObjectHandle(self.objHandle, 'axle1RightSteering')\n\n    self.axle1Left = api.simGetChildObjectHandle(self.objHandle, 'axle1LeftMotor')\n    self.axle1Right = api.simGetChildObjectHandle(self.objHandle, 'axle1RightMotor')\n    self.axle2Left = api.simGetChildObjectHandle(self.objHandle, 'axle2LeftMotor')\n    self.axle2Right = api.simGetChildObjectHandle(self.objHandle, 'axle2RightMotor')\nend)\n\n\nVehicle.MODE_MANUAL = 0\nVehicle.MODE_AUTO = 1\nVehicle.MODE_AUTO_STEERING_ONLY = 2\nVehicle.MODE_AUTO_SPEED_ONLY = 3\n\nVehicle.DRIVER_OVERRIDE_INACTIVE = 0\nVehicle.DRIVER_OVERRIDE_STEERING = 1\nVehicle.DRIVER_OVERRIDE_SPEED = 2\n\nVehicle.GEAR_NEUTRAL = 0\nVehicle.GEAR_FORWARD = 1\nVehicle.GEAR_REVERSE = 2\n\nVehicle.EPSILON = 0.01\n\nfunction Vehicle.mode2str(mode)\n    if(mode == Vehicle.MODE_MANUAL) then\n        return \"MANUAL\"\n    end\n    if(mode == Vehicle.MODE_AUTO) then\n        return \"AUTO\"\n    end\n    if(mode == Vehicle.MODE_AUTO_STEERING_ONLY) then\n        return \"AUTO_STEERING_ONLY\"\n    end\n    if(mode == Vehicle.MODE_AUTO_SPEED_ONLY) then\n        return \"AUTO_SPEED_ONLY\"\n    end\n    return \"UNKNOWN\"\nend\n\nfunction Vehicle.driverOverride2str(driverOverride)\n    if(driverOverride == Vehicle.DRIVER_OVERRIDE_INACTIVE) then\n        return \"NOT_ACTIVE\"\n    end\n    if(driverOverride == Vehicle.DRIVER_OVERRIDE_STEERING) then\n        return \"MANUAL_STEERING_CONTROL\"\n    end\n    if(driverOverride == Vehicle.DRIVER_OVERRIDE_SPEED) then\n        return \"MANUAL_SPEED_CONTROL\"\n    end\n    return \"UNKNOWN\"\nend\n\nfunction Vehicle:initialization()\n    ChildScriptBase.initialization(self)\n\n    self:log(\"initialization\")\n\n    -- ==============================================================\n    -- MODEL PROPERTIES\n    -- ==============================================================\n    self.d=0.755 -- 2*d=distance between left and right wheels\n    self.l=2.5772 -- l=distance between front and read wheels\n    self.d1=self.d\n    self.d2=self.d\n    self.d=(self.d1+self.d2)/2 -- d=0.933 -- 2*d=distance between left and right wheels\n    self.wheelRadius=1.7175\n\n    self.steeringRatio=simGetScriptSimulationParameter(self.scriptHandle, 'steeringRatio')\n\n    self.maxSteeringAngle = loadstring(\"return \" ..\n        simGetScriptSimulationParameter(self.scriptHandle, 'maxSteeringAngle', true)\n    )() -- Allows specifying expressions like \"36*math.pi/180\"\n    self.maxSpeed = simGetScriptSimulationParameter(self.scriptHandle, 'maxSpeed')\n    self.maxSpeedReverse = simGetScriptSimulationParameter(self.scriptHandle, 'maxSpeedReverse')\n    self.maxMotorTorque = simGetScriptSimulationParameter(self.scriptHandle, 'maxMotorTorque')\n    self.maxServiceBrakeTorque = simGetScriptSimulationParameter(self.scriptHandle, 'maxServiceBrakeTorque')\n    self.maxParkingBrakeTorque = simGetScriptSimulationParameter(self.scriptHandle, 'maxParkingBrakeTorque')\n    \n    self.refSteeringAngleDefault=0.0\n    self.refGearDefault = 0;\n    self.refSpeedDefault = 0;\n    self.refMotorTorqueDefault = simGetScriptSimulationParameter(self.scriptHandle, 'defaultMotorTorque')\n    self.refServiceBrakeTorqueDefault = 0.0;\n    self.refParkingBrakeTorqueDefault = 0.0;\n    self.defaultIdleMotorTorque = simGetScriptSimulationParameter(self.scriptHandle, 'defaultIdleMotorTorque')\n\n    self.autoMode = Vehicle.MODE_MANUAL\n    self.driverOverride = DRIVER_OVERRIDE_INACTIVE\n    self.currentGear = GEAR_NEUTRAL\n    self.steering_on_auto_mode_request = nil\n    self.steering_driver_override_threshold = 0.05\n    -- ==============================================================\n    -- SIGNALS DEFINITIONS\n    -- ==============================================================\n\n    self.refSteeringAngleSignalName = api.getSignalName(self.vehicleName, 'RefSteeringAngle')\n    self.refGearSignalName = api.getSignalName(self.vehicleName, 'RefGear')\n    self.refSpeedSignalName = api.getSignalName(self.vehicleName, 'RefSpeed')\n    self.refMotorTorqueSignalName = api.getSignalName(self.vehicleName, 'RefMotorTorque')\n    self.refServiceBrakeTorqueSignalName = api.getSignalName(self.vehicleName, 'RefServiceBrakeTorque')\n    self.refParkingBrakeTorqueSignalName = api.getSignalName(self.vehicleName, 'RefParkingBrakeTorque')\n\n    self.manualRefSteeringAngleSignalName = api.getSignalName(self.vehicleName, 'ManualRefSteeringAngle')\n    self.manualRefGearSignalName = api.getSignalName(self.vehicleName, 'ManualRefGear')\n    self.manualRefSpeedSignalName = api.getSignalName(self.vehicleName, 'ManualRefSpeed')\n    self.manualRefMotorTorqueSignalName = api.getSignalName(self.vehicleName, 'ManualRefMotorTorque')\n    self.manualRefServiceBrakeTorqueSignalName = api.getSignalName(self.vehicleName, 'ManualRefServiceBrakeTorque')\n    self.manualRefParkingBrakeTorqueSignalName = api.getSignalName(self.vehicleName, 'ManualRefParkingBrakeTorque')\n\n    self.currentSteeringAngleSignalName = api.getSignalName(self.vehicleName, 'currentSteeringAngle')\n    self.currentSteeringWheelAngleSignalName = api.getSignalName(self.vehicleName, 'currentSteeringWheelAngle')\n    self.currentPoseSignalName = api.getSignalName(self.vehicleName, 'currentPose')\n    self.currentTwistSignalName = api.getSignalName(self.vehicleName, 'currentTwist')\n    self.currentSpeedSignalName = api.getSignalName(self.vehicleName, 'currentSpeed')\n    self.currentGearSignalName = api.getSignalName(self.vehicleName, 'currentGear')\n    self.currentWheelSpeedSignalName = api.getSignalName(self.vehicleName, 'currentWheelSpeed')\n\n    self.autoModeReqSignalName = api.getSignalName(self.vehicleName, 'AutoModeRequest')\n    self.autoModeSignalName = api.getSignalName(self.vehicleName, 'AutoMode')\n\n    -- ==============================================================\n    -- INITIALIZE OBJECTS\n    -- ==============================================================\n\n    simSetObjectInt32Parameter(self.axle1Left,2000,0)    -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(self.axle1Right,2000,0)   -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(self.axle2Left,2000,0)    -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(self.axle2Right,2000,0)   -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n\n    -- Used in twist calculation\n    self.H_T0=simGetObjectMatrix(self.vehicleRefHandle,-1)\n    --self:sensing()\nend\n\n-- function Vehicle:actuation()\n--     return\n--     self:log(\"actuation\")\n--     -- ==============================================================\n--     -- READ MANUAL SIGNALS\n--     -- ==============================================================\n--     self.autoModeReq=api.saturate(\n--         simGetIntegerSignal(self.autoModeReqSignalName),\n--         Vehicle.MODE_MANUAL, Vehicle.MODE_AUTO_SPEED_ONLY, Vehicle.MODE_MANUAL\n--     )\n--     --simAddStatusbarMessage(string.format(\"Auto mode request: %d\", autoModeReq))\n\n--     -- Manual commands\n\n--     self.refSteeringAngle = api.saturate(\n--         simGetFloatSignal(self.manualRefSteeringAngleSignalName),\n--         -maxSteeringAngle, maxSteeringAngle, refSteeringAngleDefault\n--     )\n    \n--     self.refSpeed = api.saturate(\n--         simGetFloatSignal(self.manualRefSpeedSignalName),\n--         0, self.maxSpeed, self.refSpeedDefault\n--     )\n\n--     self.refMotorTorque = api.saturate(\n--         simGetFloatSignal(manualRefMotorTorqueSignalName),\n--         0, self.maxMotorTorque, self.refMotorTorqueDefault\n--     )\n\n--     self.currentGear = api.saturate(\n--         simGetIntegerSignal(self.manualRefGearSignalName),\n--         Vehicle.GEAR_NEUTRAL, Vehicle.GEAR_REVERSE, refGearDefault\n--     )\n\n--     self.refServiceBrakeTorque = api.saturate(\n--         self.simGetFloatSignal(self.manualRefServiceBrakeTorqueSignalName),\n--         0, self.maxServiceBrakeTorque, self.refServiceBrakeTorqueDefault\n--     )\n\n--     self.refParkingBrakeTorque = api.saturate(\n--         self.simGetFloatSignal(self.manualRefParkingBrakeTorqueSignalName),\n--         0, self.maxParkingBrakeTorque, self.refParkingBrakeTorqueDefault\n--     )\n\n--     -- ==============================================================\n--     -- DRIVER OVERRIDE RULES\n--     -- ==============================================================\n\n--     -- Insert driver override rules here\n--     self.previousDriverOverride = self.driverOverride\n--     self.previousAutoMode = self.autoMode\n\n--     if( self.currentGear == Vehicle.GEAR_NEUTRAL\n--         --and refSpeed < EPSILON\n--         --and refServiceBrakeTorque < EPSILON\n--         --and refParkingBrakeTorque > 0\n--     ) then\n--         self.driverOverride = Vehicle.DRIVER_OVERRIDE_INACTIVE\n--     end\n\n--     if( (self.autoMode == Vehicle.MODE_AUTO or self.autoMode == Vehicle.MODE_AUTO_SPEED_ONLY )\n--         and (\n--             self.currentGear > Vehicle.GEAR_NEUTRAL\n--             --or refSpeed > EPSILON        \n--             --or refServiceBrakeTorque > 0\n--             --or refParkingBrakeTorque < 1\n--         )\n--     ) then\n--         self.driverOverride = Vehicle.DRIVER_OVERRIDE_SPEED\n--     end\n\n--     if( (self.autoMode == Vehicle.MODE_AUTO or self.autoMode == Vehicle.MODE_AUTO_STEERING_ONLY )\n--         and self.steering_on_auto_mode_request ~= nil \n--         and math.abs(self.steering_on_auto_mode_request - self.refSteeringAngle) > self.steering_driver_override_threshold \n--     ) then\n--         self.driverOverride = Vehicle.DRIVER_OVERRIDE_STEERING\n--         self.steering_on_auto_mode_request = nil\n--     end\n\n--     -- ==============================================================\n--     -- INTERPRET DRIVER OVERRIDE\n--     -- ==============================================================\n\n--     if( (self.autoModeReq == Vehicle.MODE_AUTO and self.driverOverride > 0) \n--         or (self.autoModeReq == Vehicle.MODE_AUTO_SPEED_ONLY and self.driverOverride == Vehicle.DRIVER_OVERRIDE_SPEED) \n--         or (self.autoModeReq == Vehicle.MODE_AUTO_STEERING_ONLY and self.driverOverride == Vehicle.DRIVER_OVERRIDE_STEERING) \n--     ) then\n--         self.autoMode = Vehicle.MODE_MANUAL\n--     else\n--         self.autoMode = autoModeReq\n--     end\n\n--     if(self.previousDriverOverride ~= self.driverOverride) then\n--         if(self.driverOverride > 0) then\n--             simAddStatusbarMessage(string.format(\"Driver override (%s).\", driverOverride2str(self.driverOverride)) )\n--         else\n--             simAddStatusbarMessage(\"Driver override ended.\")\n--         end\n--     end\n--     if(self.previousAutoMode ~= self.autoMode) then\n--         simAddStatusbarMessage(string.format(\"Entered %s mode.\", mode2str(self.autoMode)))\n\n--         if(self.autoMode > Vehicle.MODE_MANUAL) then\n--             self.steering_on_auto_mode_request = self.refSteeringAngle\n--         end\n--     end\n    \n--     -- ==============================================================\n--     -- READ AUTO SIGNALS\n--     -- ==============================================================\n\n--     if(self.autoMode == Vehicle.MODE_AUTO or self.autoMode == Vehicle.MODE_AUTO_STEERING_ONLY) then\n--         self.refSteeringAngle = api.saturate(\n--             simGetFloatSignal(self.refSteeringAngleSignalName),\n--             -self.maxSteeringAngle, self.maxSteeringAngle, self.refSteeringAngleDefault\n--         )\n--     end    \n\n--     if(self.autoMode == Vehicle.MODE_AUTO or autoMode == Vehicle.MODE_AUTO_SPEED_ONLY) then\n--         self.refSpeed = api.saturate(\n--             simGetFloatSignal(self.refSpeedSignalName),\n--             0, self.maxSpeed, self.refSpeedDefault\n--         )\n\n--         self.refMotorTorque = api.saturate(\n--             simGetFloatSignal(self.refMotorTorqueSignalName),\n--             0, self.maxMotorTorque, self.refMotorTorqueDefault\n--         )\n\n--         self.refGear = api.saturate(\n--             simGetIntegerSignal(self.refGearSignalName),\n--             GEAR_NEUTRAL,GEAR_REVERSE, self.refGearDefault\n--         )\n\n--         self.refServiceBrakeTorque = self.api.saturate(\n--             simGetFloatSignal(self.refServiceBrakeTorqueSignalName),\n--             0, self.maxServiceBrakeTorque, self.refServiceBrakeTorqueDefault\n--         )\n\n--         self.refParkingBrakeTorque = api.saturate(\n--             simGetFloatSignal(self.refParkingBrakeTorqueSignalName),\n--             0, self.maxParkingBrakeTorque, self.refParkingBrakeTorqueDefault\n--         )\n--     end\n\n--     -- ==============================================================\n--     -- STEERING ANGLE\n--     -- ==============================================================\n    \n--     -- -- Following is a dummy joint, that represents the ref steering angle:\n--     simSetJointPosition(self.steering,self.refSteeringAngle)    \n--     -- In what follows we always read the ref steering angle from that dummy joint.\n--     self.steeringAngle=simGetJointPosition(self.steering)    \n--     -- We handle the steering wheel:\n--     self.steeringWheelAngle=self.steeringAngle*self.steeringRatio\n--     simSetJointPosition(self.steeringWheel,self.steeringWheelAngle)\n--     self.steeringAngle = self.refSteeringAngle\n    \n--     -- We handle the front left and right wheel steerings (Ackermann steering):   \n--     phi_axle1Left=math.atan( (math.tan(self.steeringAngle)*l) / (l-d1*math.tan(self.steeringAngle)) )  \n--     phi_axle1Right=math.atan( (math.tan(self.steeringAngle)*l) / (l+d1*math.tan(self.steeringAngle)) )  \n\n--     simSetJointTargetPosition(self.axle1LeftSteering,phi_axle1Left)\n--     simSetJointTargetPosition(self.axle1RightSteering,phi_axle1Right)   \n\n--     -- ==============================================================\n--     -- SPEED\n--     -- ==============================================================  \n--     linearVelocity,angularVelocity=simGetObjectVelocity(vehicleRefHandle)\n--     currentSpeed = math.sqrt(linearVelocity[1]^2, linearVelocity[2]^2, linearVelocity[3]^2)\n\n--     if(currentGear == Vehicle.GEAR_NEUTRAL) then\n--         self.refSpeed = 0; \n--     elseif(currentGear == Vehicle.GEAR_REVERSE) then\n--         self.refSpeed = api.saturate(\n--             refSpeed,\n--             0, self.maxSpeedReverse, self.refSpeedDefault\n--         )\n--         self.refSpeed = -refSpeed; \n--     end\n\n--     axle1Left_enable = 0\n--     axle1Right_enable = 0\n--     axle2Left_enable = 1\n--     axle2Right_enable = 1\n\n--     wref_axle1Left = self.refSpeed*(1/self.wheelRadius)\n--     wref_axle1Right = self.refSpeed*(1/self.wheelRadius)\n--     wref_axle2Left = ((l-d2*math.tan(self.steeringAngle))/l)*self.refSpeed*(1/self.wheelRadius)\n--     wref_axle2Right = ((l+d2*math.tan(self.steeringAngle))/l)*self.refSpeed*(1/self.wheelRadius)\n\n--     if(self.refSpeed == 0.0 or math.abs(self.refSpeed) < self.currentSpeed) then\n--         wheelTorque = self.defaultIdleMotorTorque\n--     else\n--         wheelTorque = self.refMotorTorque\n--     end\n\n--     -- ==============================================================\n--     -- BRAKES\n--     -- ==============================================================  \n\n--     if(self.refServiceBrakeTorque > 0 or self.refParkingBrakeTorque > 0) then\n--         axle1Left_enable = 1\n--         axle1Right_enable = 1\n--         axle2Left_enable = 1\n--         axle2Right_enable = 1\n\n--         wref_axle1Left = 0\n--         wref_axle1Right = 0\n--         wref_axle2Left = 0\n--         wref_axle2Right = 0\n\n--         wheelTorque = self.refServiceBrakeTorque + self.refParkingBrakeTorque\n--     end\n\n--     -- ==============================================================\n--     -- WHEEL ACTUATION\n--     -- ==============================================================  \n\n--     simSetObjectInt32Parameter(self.axle1Left,2000,axle1Left_enable)    -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n--     simSetObjectInt32Parameter(self.axle1Right,2000,axle1Right_enable)   -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n--     simSetObjectInt32Parameter(self.axle2Left,2000,axle2Left_enable)    -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n--     simSetObjectInt32Parameter(self.axle2Right,2000,axle2Right_enable)   -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n\n--     simSetJointTargetVelocity(self.axle1Left,wref_axle1Left)\n--     simSetJointTargetVelocity(self.axle1Right,wref_axle1Right)\n--     simSetJointTargetVelocity(self.axle2Left,wref_axle2Left)\n--     simSetJointTargetVelocity(self.axle2Right,wref_axle2Right)\n\n--     simSetJointForce(self.axle1Left,wheelTorque)\n--     simSetJointForce(self.axle1Right,wheelTorque)\n--     simSetJointForce(self.axle2Left,wheelTorque)\n--     simSetJointForce(self.axle2Right,wheelTorque)\n-- end\n\nfunction Vehicle:sensing()\n    self:log(\"sensing\")\n\n    self.currentSteeringAngle=simGetJointPosition(self.steering)  \n    self.currentSteeringWheelAngle=self.currentSteeringAngle*self.steeringRatio  \n\n    pos=simGetObjectPosition(self.vehicleRefHandle,-1)\n    ori=simGetObjectOrientation(self.vehicleRefHandle,-1)\n    poseData=simPackFloats({pos[1],pos[2],pos[3],ori[1],ori[2],ori[3]})\n\n    vel,w= simGetObjectVelocity(self.vehicleRefHandle,-1)\n    velData=simPackFloats(vel)\n    speed = math.sqrt(vel[1]*vel[1]+vel[2]*vel[2]+vel[3]*vel[3])\n\n    H_T1=simGetObjectMatrix(self.vehicleRefHandle,-1)\n    q_T1 = simGetQuaternionFromMatrix(H_T1)\n    R_T1 = simBuildMatrixQ({0,0,0}, q_T1)\n    R_T1_inv = simGetInvertedMatrix(R_T1)\n    v_T1 = simMultiplyVector(R_T1_inv, vel)\n    w_T1 = simMultiplyVector(R_T1_inv, w)\n    twist={v_T1[1],v_T1[2],v_T1[3],w_T1[1],w_T1[2],w_T1[3]}\n    twistData=simPackFloats(twist)  \n\n\n    simSetFloatSignal(self.currentSteeringAngleSignalName,self.currentSteeringAngle)\n    simSetFloatSignal(self.currentSteeringWheelAngleSignalName,self.currentSteeringWheelAngle)\n    simSetStringSignal(self.currentPoseSignalName,poseData)\n    simSetStringSignal(self.currentTwistSignalName,twistData)\n    simSetFloatSignal(self.currentSpeedSignalName,speed)\n    simSetIntegerSignal(self.currentGearSignalName,self.currentGear)\n    simSetFloatSignal(self.currentWheelSpeedSignalName,0)\n    simSetIntegerSignal(self.autoModeSignalName,self.autoMode)\nend\n\nfunction Vehicle:cleanup()\n    self:log(\"cleanup\")\n\n    simClearFloatSignal(self.refSteeringAngleSignalName)\n    simClearIntegerSignal(self.refGearSignalName)\n    simClearStringSignal(self.refSpeedSignalName)\n    simClearStringSignal(self.refMotorTorqueSignalName)\n    simClearFloatSignal(self.refServiceBrakeTorqueSignalName)\n    simClearFloatSignal(self.refParkingBrakeTorqueSignalName)\n\n    simClearFloatSignal(self.manualRefSteeringAngleSignalName)\n    simClearIntegerSignal(self.manualRefGearSignalName)\n    simClearStringSignal(self.manualRefSpeedSignalName)\n    simClearStringSignal(self.manualRefMotorTorqueSignalName)\n    simClearFloatSignal(self.manualRefServiceBrakeTorqueSignalName)\n    simClearFloatSignal(self.manualRefParkingBrakeTorqueSignalName)\n\n    simClearIntegerSignal(self.autoModeReqSignalName)\n\nend\n\n\nreturn Vehicle\n\n",
+			"file": "src/lua/Vehicle.lua",
+			"file_size": 19954,
+			"file_write_time": 131373969455309773,
+			"settings":
+			{
+				"buffer_size": 19954,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"contents": "MODE_MANUAL = 0\nMODE_AUTO = 1\nMODE_AUTO_STEERING_ONLY = 2\nMODE_AUTO_SPEED_ONLY = 3\n\nDRIVER_OVERRIDE_INACTIVE = 0\nDRIVER_OVERRIDE_STEERING = 1\nDRIVER_OVERRIDE_SPEED = 2\n\nGEAR_NEUTRAL = 0\nGEAR_FORWARD = 1\nGEAR_REVERSE = 2\n\nEPSILON = 0.01\n\nfunction mode2str(mode)\n    if(mode == MODE_MANUAL) then\n        return \"MANUAL\"\n    end\n    if(mode == MODE_AUTO) then\n        return \"AUTO\"\n    end\n    if(mode == MODE_AUTO_STEERING_ONLY) then\n        return \"AUTO_STEERING_ONLY\"\n    end\n    if(mode == MODE_AUTO_SPEED_ONLY) then\n        return \"AUTO_SPEED_ONLY\"\n    end\n    return \"UNKNOWN\"\nend\n\nfunction driverOverride2str(driverOverride)\n    if(driverOverride == DRIVER_OVERRIDE_INACTIVE) then\n        return \"NOT ACTIVE\"\n    end\n    if(driverOverride == DRIVER_OVERRIDE_STEERING) then\n        return \"MANUAL_STEERING_CONTROL\"\n    end\n    if(driverOverride == DRIVER_OVERRIDE_SPEED) then\n        return \"MANUAL_SPEED_CONTROL\"\n    end\n    return \"UNKNOWN\"\nend\n\nfunction update()\n    currentSteeringAngle=simGetJointPosition(steering)  \n    currentSteeringWheelAngle=currentSteeringAngle*steeringRatio  \n\n    pos=simGetObjectPosition(vehicleRefHandle,-1)\n    ori=simGetObjectOrientation(vehicleRefHandle,-1)\n    poseData=simPackFloats({pos[1],pos[2],pos[3],ori[1],ori[2],ori[3]})\n\n    vel,w= simGetObjectVelocity(vehicleRefHandle,-1)\n    velData=simPackFloats(vel)\n    speed = math.sqrt(vel[1]*vel[1]+vel[2]*vel[2]+vel[3]*vel[3])\n\n    H_T1=simGetObjectMatrix(vehicleRefHandle,-1)\n    q_T1 = simGetQuaternionFromMatrix(H_T1)\n    R_T1 = simBuildMatrixQ({0,0,0}, q_T1)\n    R_T1_inv = simGetInvertedMatrix(R_T1)\n    v_T1 = simMultiplyVector(R_T1_inv, vel)\n    w_T1 = simMultiplyVector(R_T1_inv, w)\n    twist={v_T1[1],v_T1[2],v_T1[3],w_T1[1],w_T1[2],w_T1[3]}\n    twistData=simPackFloats(twist)  \n\n\n    simSetFloatSignal(currentSteeringAngleSignalName,currentSteeringAngle)\n    simSetFloatSignal(currentSteeringWheelAngleSignalName,currentSteeringWheelAngle)\n    simSetStringSignal(currentPoseSignalName,poseData)\n    simSetStringSignal(currentTwistSignalName,twistData)\n    simSetFloatSignal(currentSpeedSignalName,speed)\n    simSetIntegerSignal(currentGearSignalName,currentGear)\n    simSetFloatSignal(currentWheelSpeedSignalName,0)\n    simSetIntegerSignal(autoModeSignalName,autoMode)\nend\n\nif (sim_call_type==sim_childscriptcall_initialization) then \n\n    -- ==============================================================\n    -- HANDLES\n    -- ==============================================================\n    objHandle=simGetObjectAssociatedWithScript(sim_handle_self)\n    objName = simGetObjectName(objHandle)\n    scriptHandle = simGetScriptAssociatedWithObject(objHandle)\n\n    vehicleName = objName\n    vehicleRefHandle = api.simGetChildObjectHandle(objHandle, 'rearAxleRef')\n    steering = api.simGetChildObjectHandle(objHandle, 'steering')\n    steeringWheel = api.simGetChildObjectHandle(objHandle, 'steeringWheelJoint')\n\n    axle1LeftSteering = api.simGetChildObjectHandle(objHandle, 'axle1LeftSteering')\n    axle1RightSteering = api.simGetChildObjectHandle(objHandle, 'axle1RightSteering')\n\n    axle1Left = api.simGetChildObjectHandle(objHandle, 'axle1LeftMotor')\n    axle1Right = api.simGetChildObjectHandle(objHandle, 'axle1RightMotor')\n    axle2Left = api.simGetChildObjectHandle(objHandle, 'axle2LeftMotor')\n    axle2Right = api.simGetChildObjectHandle(objHandle, 'axle2RightMotor')\n\n    -- ==============================================================\n    -- MODEL PROPERTIES\n    -- ==============================================================\n    d=0.755 -- 2*d=distance between left and right wheels\n    l=2.5772 -- l=distance between front and read wheels\n    d1=d\n    d2=d\n    d=(d1+d2)/2 -- d=0.933 -- 2*d=distance between left and right wheels\n    wheelRadius=1.7175\n\n    steeringRatio=simGetScriptSimulationParameter(scriptHandle, 'steeringRatio')\n\n    maxSteeringAngle = loadstring(\"return \" ..\n        simGetScriptSimulationParameter(scriptHandle, 'maxSteeringAngle', true)\n    )() -- Allows specifying expressions like \"36*math.pi/180\"\n    maxSpeed = simGetScriptSimulationParameter(scriptHandle, 'maxSpeed')\n    maxSpeedReverse = simGetScriptSimulationParameter(scriptHandle, 'maxSpeedReverse')\n    maxMotorTorque = simGetScriptSimulationParameter(scriptHandle, 'maxMotorTorque')\n    maxServiceBrakeTorque = simGetScriptSimulationParameter(scriptHandle, 'maxServiceBrakeTorque')\n    maxParkingBrakeTorque = simGetScriptSimulationParameter(scriptHandle, 'maxParkingBrakeTorque')\n    \n    refSteeringAngleDefault=0.0\n    refGearDefault = 0;\n    refSpeedDefault = 0;\n    refMotorTorqueDefault = simGetScriptSimulationParameter(scriptHandle, 'defaultMotorTorque')\n    refServiceBrakeTorqueDefault = 0.0;\n    refParkingBrakeTorqueDefault = 0.0;\n    defaultIdleMotorTorque = simGetScriptSimulationParameter(scriptHandle, 'defaultIdleMotorTorque')\n\n    autoMode = MODE_MANUAL\n    driverOverride = DRIVER_OVERRIDE_INACTIVE\n    currentGear = GEAR_NEUTRAL\n    steering_on_auto_mode_request = nil\n    steering_driver_override_threshold = 0.05\n    -- ==============================================================\n    -- SIGNALS DEFINITIONS\n    -- ==============================================================\n\n    refSteeringAngleSignalName = api.getSignalName(vehicleName, 'RefSteeringAngle')\n    refGearSignalName = api.getSignalName(vehicleName, 'RefGear')\n    refSpeedSignalName = api.getSignalName(vehicleName, 'RefSpeed')\n    refMotorTorqueSignalName = api.getSignalName(vehicleName, 'RefMotorTorque')\n    refServiceBrakeTorqueSignalName = api.getSignalName(vehicleName, 'RefServiceBrakeTorque')\n    refParkingBrakeTorqueSignalName = api.getSignalName(vehicleName, 'RefParkingBrakeTorque')\n\n    manualRefSteeringAngleSignalName = api.getSignalName(vehicleName, 'ManualRefSteeringAngle')\n    manualRefGearSignalName = api.getSignalName(vehicleName, 'ManualRefGear')\n    manualRefSpeedSignalName = api.getSignalName(vehicleName, 'ManualRefSpeed')\n    manualRefMotorTorqueSignalName = api.getSignalName(vehicleName, 'ManualRefMotorTorque')\n    manualRefServiceBrakeTorqueSignalName = api.getSignalName(vehicleName, 'ManualRefServiceBrakeTorque')\n    manualRefParkingBrakeTorqueSignalName = api.getSignalName(vehicleName, 'ManualRefParkingBrakeTorque')\n\n    currentSteeringAngleSignalName = api.getSignalName(vehicleName, 'currentSteeringAngle')\n    currentSteeringWheelAngleSignalName = api.getSignalName(vehicleName, 'currentSteeringWheelAngle')\n    currentPoseSignalName = api.getSignalName(vehicleName, 'currentPose')\n    currentTwistSignalName = api.getSignalName(vehicleName, 'currentTwist')\n    currentSpeedSignalName = api.getSignalName(vehicleName, 'currentSpeed')\n    currentGearSignalName = api.getSignalName(vehicleName, 'currentGear')\n    currentWheelSpeedSignalName = api.getSignalName(vehicleName, 'currentWheelSpeed')\n\n    autoModeReqSignalName = api.getSignalName(vehicleName, 'AutoModeRequest')\n    autoModeSignalName = api.getSignalName(vehicleName, 'AutoMode')\n\n    -- ==============================================================\n    -- INITIALIZE OBJECTS\n    -- ==============================================================\n\n    simSetObjectInt32Parameter(axle1Left,2000,0)    -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(axle1Right,2000,0)   -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(axle2Left,2000,0)    -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(axle2Right,2000,0)   -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n\n    -- Used in twist calculation\n    H_T0=simGetObjectMatrix(vehicleRefHandle,-1)\n    update()\nend\n    \nif (sim_call_type==sim_childscriptcall_actuation) then \n    -- ==============================================================\n    -- READ MANUAL SIGNALS\n    -- ==============================================================\n    autoModeReq=api.saturate(\n        simGetIntegerSignal(autoModeReqSignalName),\n        MODE_MANUAL,MODE_AUTO_SPEED_ONLY, MODE_MANUAL\n    )\n    --simAddStatusbarMessage(string.format(\"Auto mode request: %d\", autoModeReq))\n\n    -- Manual commands\n\n    refSteeringAngle = api.saturate(\n        simGetFloatSignal(manualRefSteeringAngleSignalName),\n        -maxSteeringAngle, maxSteeringAngle, refSteeringAngleDefault\n    )\n    \n    refSpeed = api.saturate(\n        simGetFloatSignal(manualRefSpeedSignalName),\n        0, maxSpeed, refSpeedDefault\n    )\n\n    refMotorTorque = api.saturate(\n        simGetFloatSignal(manualRefMotorTorqueSignalName),\n        0, maxMotorTorque, refMotorTorqueDefault\n    )\n\n    currentGear = api.saturate(\n        simGetIntegerSignal(manualRefGearSignalName),\n        GEAR_NEUTRAL,GEAR_REVERSE, refGearDefault\n    )\n\n    refServiceBrakeTorque = api.saturate(\n        simGetFloatSignal(manualRefServiceBrakeTorqueSignalName),\n        0, maxServiceBrakeTorque, refServiceBrakeTorqueDefault\n    )\n\n    refParkingBrakeTorque = api.saturate(\n        simGetFloatSignal(manualRefParkingBrakeTorqueSignalName),\n        0, maxParkingBrakeTorque, refParkingBrakeTorqueDefault\n    )\n\n    -- ==============================================================\n    -- DRIVER OVERRIDE RULES\n    -- ==============================================================\n\n    -- Insert driver override rules here\n    previousDriverOverride = driverOverride\n    previousAutoMode = autoMode\n\n    if( currentGear == GEAR_NEUTRAL\n        --and refSpeed < EPSILON\n        --and refServiceBrakeTorque < EPSILON\n        --and refParkingBrakeTorque > 0\n    ) then\n        driverOverride = DRIVER_OVERRIDE_INACTIVE\n    end\n\n    if( (autoMode == MODE_AUTO or autoMode == MODE_AUTO_SPEED_ONLY )\n        and (\n            currentGear > GEAR_NEUTRAL\n            --or refSpeed > EPSILON        \n            --or refServiceBrakeTorque > 0\n            --or refParkingBrakeTorque < 1\n        )\n    ) then\n        driverOverride = DRIVER_OVERRIDE_SPEED\n    end\n\n    if( (autoMode == MODE_AUTO or autoMode == MODE_AUTO_STEERING_ONLY )\n        and steering_on_auto_mode_request ~= nil \n        and math.abs(steering_on_auto_mode_request - refSteeringAngle) > steering_driver_override_threshold \n    ) then\n        driverOverride = DRIVER_OVERRIDE_STEERING\n        steering_on_auto_mode_request = nil\n    end\n\n    -- ==============================================================\n    -- INTERPRET DRIVER OVERRIDE\n    -- ==============================================================\n\n    if( (autoModeReq == MODE_AUTO and driverOverride > 0) \n        or (autoModeReq == MODE_AUTO_SPEED_ONLY and driverOverride == DRIVER_OVERRIDE_SPEED) \n        or (autoModeReq == MODE_AUTO_STEERING_ONLY and driverOverride == DRIVER_OVERRIDE_STEERING) \n    ) then\n        autoMode = MODE_MANUAL\n    else\n        autoMode = autoModeReq\n    end\n\n    if(previousDriverOverride ~= driverOverride) then\n        if(driverOverride > 0) then\n            simAddStatusbarMessage(string.format(\"Driver override (%s).\", driverOverride2str(driverOverride)) )\n        else\n            simAddStatusbarMessage(\"Driver override ended.\")\n        end\n    end\n    if(previousAutoMode ~= autoMode) then\n        simAddStatusbarMessage(string.format(\"Entered %s mode.\", mode2str(autoMode)))\n\n        if(autoMode > MODE_MANUAL) then\n            steering_on_auto_mode_request = refSteeringAngle\n        end\n    end\n    \n    -- ==============================================================\n    -- READ AUTO SIGNALS\n    -- ==============================================================\n\n    if(autoMode == MODE_AUTO or autoMode == MODE_AUTO_STEERING_ONLY) then\n        refSteeringAngle = api.saturate(\n            simGetFloatSignal(refSteeringAngleSignalName),\n            -maxSteeringAngle, maxSteeringAngle, refSteeringAngleDefault\n        )\n    end    \n\n    if(autoMode == MODE_AUTO or autoMode == MODE_AUTO_SPEED_ONLY) then\n        refSpeed = api.saturate(\n            simGetFloatSignal(refSpeedSignalName),\n            0, maxSpeed, refSpeedDefault\n        )\n\n        refMotorTorque = api.saturate(\n            simGetFloatSignal(refMotorTorqueSignalName),\n            0, maxMotorTorque, refMotorTorqueDefault\n        )\n\n        refGear = api.saturate(\n            simGetIntegerSignal(refGearSignalName),\n            GEAR_NEUTRAL,GEAR_REVERSE, refGearDefault\n        )\n\n        refServiceBrakeTorque = api.saturate(\n            simGetFloatSignal(refServiceBrakeTorqueSignalName),\n            0, maxServiceBrakeTorque, refServiceBrakeTorqueDefault\n        )\n\n        refParkingBrakeTorque = api.saturate(\n            simGetFloatSignal(refParkingBrakeTorqueSignalName),\n            0, maxParkingBrakeTorque, refParkingBrakeTorqueDefault\n        )\n    end\n\n    -- ==============================================================\n    -- STEERING ANGLE\n    -- ==============================================================\n    \n    -- -- Following is a dummy joint, that represents the ref steering angle:\n    simSetJointPosition(steering,refSteeringAngle)    \n    -- In what follows we always read the ref steering angle from that dummy joint.\n    steeringAngle=simGetJointPosition(steering)    \n    -- We handle the steering wheel:\n    steeringWheelAngle=steeringAngle*steeringRatio\n    simSetJointPosition(steeringWheel,steeringWheelAngle)\n    steeringAngle = refSteeringAngle\n    \n    -- We handle the front left and right wheel steerings (Ackermann steering):   \n    phi_axle1Left=math.atan( (math.tan(steeringAngle)*l) / (l-d1*math.tan(steeringAngle)) )  \n    phi_axle1Right=math.atan( (math.tan(steeringAngle)*l) / (l+d1*math.tan(steeringAngle)) )  \n\n    simSetJointTargetPosition(axle1LeftSteering,phi_axle1Left)\n    simSetJointTargetPosition(axle1RightSteering,phi_axle1Right)   \n\n    -- ==============================================================\n    -- SPEED\n    -- ==============================================================  \n    linearVelocity,angularVelocity=simGetObjectVelocity(vehicleRefHandle)\n    currentSpeed = math.sqrt(linearVelocity[1]^2, linearVelocity[2]^2, linearVelocity[3]^2)\n\n    if(currentGear==GEAR_NEUTRAL) then\n        refSpeed = 0; \n    elseif(currentGear==GEAR_REVERSE) then\n        refSpeed = api.saturate(\n            refSpeed,\n            0, maxSpeedReverse, refSpeedDefault\n        )\n        refSpeed = -refSpeed; \n    end\n\n    axle1Left_enable = 0\n    axle1Right_enable = 0\n    axle2Left_enable = 1\n    axle2Right_enable = 1\n\n    wref_axle1Left = refSpeed*(1/wheelRadius)\n    wref_axle1Right = refSpeed*(1/wheelRadius)\n    wref_axle2Left = ((l-d2*math.tan(steeringAngle))/l)*refSpeed*(1/wheelRadius)\n    wref_axle2Right = ((l+d2*math.tan(steeringAngle))/l)*refSpeed*(1/wheelRadius)\n\n    if(refSpeed == 0.0 or math.abs(refSpeed) < currentSpeed) then\n        wheelTorque = defaultIdleMotorTorque\n    else\n        wheelTorque = refMotorTorque\n    end\n\n    -- ==============================================================\n    -- BRAKES\n    -- ==============================================================  \n\n    if(refServiceBrakeTorque > 0 or refParkingBrakeTorque > 0) then\n        axle1Left_enable = 1\n        axle1Right_enable = 1\n        axle2Left_enable = 1\n        axle2Right_enable = 1\n\n        wref_axle1Left = 0\n        wref_axle1Right = 0\n        wref_axle2Left = 0\n        wref_axle2Right = 0\n\n        wheelTorque = refServiceBrakeTorque + refParkingBrakeTorque\n    end\n\n    -- ==============================================================\n    -- WHEEL ACTUATION\n    -- ==============================================================  \n\n    simSetObjectInt32Parameter(axle1Left,2000,axle1Left_enable)    -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(axle1Right,2000,axle1Right_enable)   -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(axle2Left,2000,axle2Left_enable)    -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n    simSetObjectInt32Parameter(axle2Right,2000,axle2Right_enable)   -- sim_jointintparam_motor_enabled (2000): int32 parameter : dynamic motor enable state (0 or !=0)\n\n    simSetJointTargetVelocity(axle1Left,wref_axle1Left)\n    simSetJointTargetVelocity(axle1Right,wref_axle1Right)\n    simSetJointTargetVelocity(axle2Left,wref_axle2Left)\n    simSetJointTargetVelocity(axle2Right,wref_axle2Right)\n\n    simSetJointForce(axle1Left,wheelTorque)\n    simSetJointForce(axle1Right,wheelTorque)\n    simSetJointForce(axle2Left,wheelTorque)\n    simSetJointForce(axle2Right,wheelTorque)\nend\n\nif (sim_call_type==sim_childscriptcall_sensing) then\n\nupdate()\n\nend\n\nif (sim_call_type==sim_childscriptcall_cleanup) then\n\n    simClearFloatSignal(refSteeringAngleSignalName)\n    simClearIntegerSignal(refGearSignalName)\n    simClearStringSignal(refSpeedSignalName)\n    simClearStringSignal(refMotorTorqueSignalName)\n    simClearFloatSignal(refServiceBrakeTorqueSignalName)\n    simClearFloatSignal(refParkingBrakeTorqueSignalName)\n\n    simClearFloatSignal(manualRefSteeringAngleSignalName)\n    simClearIntegerSignal(manualRefGearSignalName)\n    simClearStringSignal(manualRefSpeedSignalName)\n    simClearStringSignal(manualRefMotorTorqueSignalName)\n    simClearFloatSignal(manualRefServiceBrakeTorqueSignalName)\n    simClearFloatSignal(manualRefParkingBrakeTorqueSignalName)\n\n    simClearIntegerSignal(autoModeReqSignalName)\n\nend\n\n\n\n",
+			"settings":
+			{
+				"buffer_size": 17624,
+				"line_ending": "Windows",
+				"name": "MODE_MANUAL = 0"
+			}
+		},
+		{
+			"file": "src/lua/class.lua",
+			"settings":
+			{
+				"buffer_size": 1184,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 0.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"expanded_folders":
+	[
+		"/E/OneDrive/Projetos/VREPExtensionJoystick/VREPScenes",
+		"/E/OneDrive/Projetos/VREPExtensionJoystick/VREPScenes/scenes",
+		"/E/OneDrive/Projetos/VREPExtensionJoystick/VREPScenes/src",
+		"/E/OneDrive/Projetos/VREPExtensionJoystick/VREPScenes/src/lua"
+	],
+	"file_history":
+	[
+		"/C/Program Files (x86)/V-REP3/V-REP_PRO_EDU/system/usrset.txt",
+		"/E/OneDrive/Projetos/VREPExtensionJoystick/v_repExtJoystick/README.md",
+		"/E/OneDrive/Projetos/VREPExtensionJoystick/doc/README.txt"
+	],
+	"find":
+	{
+		"height": 34.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"MODE_MANUAL"
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 1,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "src/lua/ChildScriptBase.lua",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 1216,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								1216,
+								1193
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Lua/Lua.sublime-syntax"
+						},
+						"translation.x": 0.0,
+						"translation.y": 322.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 1,
+					"type": "text"
+				},
+				{
+					"buffer": 1,
+					"file": "src/lua/Vehicle.lua",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 19954,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								19935,
+								19113
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Lua/Lua.sublime-syntax",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 5885.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 0,
+					"type": "text"
+				},
+				{
+					"buffer": 2,
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 17624,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								17624,
+								17624
+							]
+						],
+						"settings":
+						{
+							"auto_name": "MODE_MANUAL = 0",
+							"syntax": "Packages/Text/Plain text.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 5648.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 2,
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "src/lua/class.lua",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 1184,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								46,
+								46
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Lua/Lua.sublime-syntax",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 3,
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 23.0
+	},
+	"input":
+	{
+		"height": 0.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"pinned_build_system": "",
+	"project": "vrep.sublime-project",
+	"replace":
+	{
+		"height": 42.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 281.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}
