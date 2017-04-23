@@ -4,7 +4,6 @@
 #include "v_repExtJoystick.h"
 #include "v_repLib.h"
 #include <iostream>
-#include <dinput.h>
 #include <shlwapi.h> // for the "PathRemoveFileSpec" function
 
 
@@ -32,26 +31,6 @@
 //      Please see MFC Technical Notes 33 and 58 for additional
 //      details.
 //
-
-//BEGIN_MESSAGE_MAP(Cv_repExtJoystickApp, CWinApp)
-//END_MESSAGE_MAP()
-//
-//Cv_repExtJoystickApp::Cv_repExtJoystickApp()
-//{
-//}
-//
-//Cv_repExtJoystickApp theApp;
-//
-//BOOL Cv_repExtJoystickApp::InitInstance()
-//{
-//    CWinApp::InitInstance();
-//    return TRUE;
-//}
-
-
-
-
-#define strConCat(x,y,z)    x##y##z
 
 #define LUA_GETCOUNT "simExtJoyGetCount"
 #define LUA_GETDATA "simExtJoyGetData"
@@ -208,7 +187,7 @@ DWORD WINAPI _joyThread(LPVOID lpParam)
     return(0);
 }
 
-void launchThreadIfNeeded()
+DLLEXPORT void launchThreadIfNeeded()
 {
     if (!_inJoyThread)
     {
@@ -224,7 +203,7 @@ void launchThreadIfNeeded()
 }
 
 
-void killThreadIfNeeded()
+DLLEXPORT void killThreadIfNeeded()
 {
     if (_inJoyThread)
     {
@@ -234,6 +213,26 @@ void killThreadIfNeeded()
         _joyThreadLaunched=false;
         _joyThreadEnded=false;
     }
+}
+
+
+DLLEXPORT int simExtJoyGetCount() {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	launchThreadIfNeeded();
+
+	return joystickCount;
+}
+
+DLLEXPORT bool simExtJoyGetData(int joyId, DIJOYSTATE2& state) {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	launchThreadIfNeeded();
+
+	if (joyId > joystickCount)
+		return false;
+
+	state = joystickStates[joyId];
+
+	return true;
 }
 
 void LUA_GETCOUNT_CALLBACK(SLuaCallBack* p)
