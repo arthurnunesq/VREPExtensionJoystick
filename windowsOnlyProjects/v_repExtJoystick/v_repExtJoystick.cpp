@@ -365,6 +365,7 @@ VREP_DLLEXPORT unsigned char v_repStart(void* reservedPointer,int reservedInt)
     int inArgs2[]={1,sim_lua_arg_int};
     simRegisterCustomLuaFunction(LUA_GETDATA, "table_3 axes, number buttons,table_3 rotAxes,table_2 slider,table_4 pov=" LUA_GETDATA "(number deviceIndex)", inArgs2, LUA_GETDATA_CALLBACK);
 
+	std::cout << "VREP Joystick plugin, 2017-04-22, Arthur Queiroz.\n";
 
     return(3);  // initialization went fine, return the version number of this plugin!
                 // version 2 was for V-REP 2.5.12 or earlier
