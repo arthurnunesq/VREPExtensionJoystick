@@ -106,7 +106,7 @@ end
 
 function Vehicle:actuation()
     -- self:log("actuation")
-    
+
     -- ==============================================================
     -- READ MANUAL SIGNALS
     -- ==============================================================
@@ -403,13 +403,13 @@ function Vehicle:isManualControlSource(manualControlSourceId)
 end
 
 function Vehicle:setManualControlSource(manualControlSourceId)
-    if(self.isManualControlSource()) then
+    if(self:isManualControlSource()) then
         return
     end
 
     simSetStringSignal(self.manualControlSourceIdSignalName, manualControlSourceId)
 
-    self.log("Manual control source set to " .. manualControlSourceId)
+    self:log("Manual control source set to " .. manualControlSourceId)
 end
 
 
