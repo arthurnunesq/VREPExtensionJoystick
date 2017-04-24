@@ -4,6 +4,7 @@
 #include "v_repExtJoystick.h"
 #include "v_repLib.h"
 #include <iostream>
+#include <sstream>
 #include <shlwapi.h> // for the "PathRemoveFileSpec" function
 
 
@@ -35,14 +36,44 @@
 #define LUA_GETCOUNT "simExtJoyGetCount"
 #define LUA_GETDATA "simExtJoyGetData"
 
+
+void Joystick::print() {
+	std::ostringstream ss;
+
+	if (handle == NULL) {
+		ss << "Invalid joystick instance." << std::endl;
+	}
+	else {
+		ss << "Joystick " << id << std::endl;
+		ss << "nffaxes =  " << num_force_feedback_axes << std::endl;
+		ss << "axis1 = " << state.lX << std::endl;
+		ss << "axis2 = " << state.lY << std::endl;
+		ss << "axis3 = " << state.lZ << std::endl;
+		for (int i = 0;i<16;i++)
+		{
+			ss << "button " << i << " = " << (state.rgbButtons[i] != 0 ? true : false) << std::endl;
+		}
+		ss << "rotAxis1 = " << state.lRx << std::endl;
+		ss << "rotAxis2 = " << state.lRy << std::endl;
+		ss << "rotAxis3 = " << state.lRz << std::endl;
+		ss << "slider1 = " << state.rglSlider[0] << std::endl;
+		ss << "slider2 = " << state.rglSlider[1] << std::endl;
+		for (int i = 0;i<4;i++)
+		{
+			ss << "pov " << i << " = " << state.rgdwPOV[i] << std::endl;
+		}
+	}
+
+	std::cout << ss.str();
+}
+
 volatile bool _joyThreadLaunched=false;
 volatile bool _joyThreadEnded=false;
 volatile bool _inJoyThread=false;
 volatile bool joyGoodToRead=false;
 LPDIRECTINPUT8 di;
-LPDIRECTINPUTDEVICE8 joysticks[4]={NULL,NULL,NULL,NULL};
-DIDEVCAPS capabilities[4];
-DIJOYSTATE2 joystickStates[4];
+
+Joystick joysticks[4];
 int currentDeviceIndex=0;
 int joystickCount=0;
 
@@ -51,7 +82,13 @@ LIBRARY vrepLib;
 BOOL CALLBACK enumCallback(const DIDEVICEINSTANCE* instance, VOID* context)
 {
     HRESULT hr;
-    hr = di->CreateDevice(instance->guidInstance, &joysticks[currentDeviceIndex++], NULL);
+    hr = di->CreateDevice(instance->guidInstance, &joysticks[currentDeviceIndex].handle, NULL);
+	if (FAILED(hr))
+		return DIENUM_CONTINUE;
+
+	joysticks[currentDeviceIndex].id = currentDeviceIndex;
+	currentDeviceIndex++;
+
     return DIENUM_CONTINUE;
 }
 
@@ -68,9 +105,14 @@ BOOL CALLBACK enumAxesCallback(const DIDEVICEOBJECTINSTANCE* instance, VOID* con
     propRange.lMax              = +1000; 
     
     // Set the range for the axis
-    if (FAILED(joysticks[currentDeviceIndex]->SetProperty(DIPROP_RANGE, &propRange.diph))) {
+    if (FAILED(joysticks[currentDeviceIndex].handle->SetProperty(DIPROP_RANGE, &propRange.diph))) {
         return DIENUM_STOP;
     }
+
+	// Counts num of forcefeedback enables axes
+	auto pdwNumForceFeedbackAxis = reinterpret_cast<DWORD*>(context);
+	if ((instance->dwFlags & DIDOI_FFACTUATOR) != 0)
+		joysticks[currentDeviceIndex].num_force_feedback_axes++;
 
     return DIENUM_CONTINUE;
 }
@@ -105,7 +147,7 @@ DWORD WINAPI _joyThread(LPVOID lpParam)
     joystickCount=0;
     for (int i=0;i<4;i++)
     {
-        if (joysticks[i]!=NULL)
+        if (joysticks[i].handle!=NULL)
             joystickCount++;
     }
     if (joystickCount==0) 
@@ -118,21 +160,21 @@ DWORD WINAPI _joyThread(LPVOID lpParam)
     // Set joystick properties:
     for (int i=0;i<4;i++)
     {
-        if (joysticks[i]!=NULL)
+        if (joysticks[i].handle!=NULL)
         {
-            if (FAILED(hr = joysticks[i]->SetDataFormat(&c_dfDIJoystick2))) 
+            if (FAILED(hr = joysticks[i].handle->SetDataFormat(&c_dfDIJoystick2)))
                 printf("Failed at 'SetDataFormat'.\n");
 
-            if (FAILED(hr = joysticks[i]->SetCooperativeLevel(NULL, DISCL_EXCLUSIVE | DISCL_FOREGROUND)))
+            if (FAILED(hr = joysticks[i].handle->SetCooperativeLevel(NULL, DISCL_EXCLUSIVE | DISCL_FOREGROUND)))
 				(void)0;// do not output an error here!      printf("Failed at 'SetCooperativeLevel'.\n");
 			// http://stackoverflow.com/a/13939469/702828
 
-            capabilities[i].dwSize = sizeof(DIDEVCAPS);
-            if (FAILED(hr = joysticks[i]->GetCapabilities(&capabilities[i])))
+			joysticks[i].capabilities.dwSize = sizeof(DIDEVCAPS);
+            if (FAILED(hr = joysticks[i].handle->GetCapabilities(&joysticks[i].capabilities)))
                 printf("Failed at 'GetCapabilities'.\n");
 
             currentDeviceIndex=i;
-            if (FAILED(hr = joysticks[i]->EnumObjects(enumAxesCallback, NULL, DIDFT_AXIS)))
+            if (FAILED(hr = joysticks[i].handle->EnumObjects(enumAxesCallback, NULL, DIDFT_AXIS)))
                 printf("Failed at 'EnumObjects'.\n");
         }
     }
@@ -142,15 +184,15 @@ DWORD WINAPI _joyThread(LPVOID lpParam)
     {
         for (int i=0;i<4;i++)
         {
-            if (joysticks[i]!=NULL)
+            if (joysticks[i].handle!=NULL)
             {
-                hr = joysticks[i]->Poll();
+                hr = joysticks[i].handle->Poll();
                 bool cont=true;
                 if (FAILED(hr)) 
                 {
-                    hr = joysticks[i]->Acquire();
+                    hr = joysticks[i].handle->Acquire();
                     while (hr == DIERR_INPUTLOST)
-                        hr = joysticks[i]->Acquire();
+                        hr = joysticks[i].handle->Acquire();
 
                     if ((hr == DIERR_INVALIDPARAM) || (hr == DIERR_NOTINITIALIZED))
                     {
@@ -166,7 +208,7 @@ DWORD WINAPI _joyThread(LPVOID lpParam)
                 }
                 if (cont)
                 {
-                    if (FAILED(hr = joysticks[i]->GetDeviceState(sizeof(DIJOYSTATE2), &joystickStates[i])))
+                    if (FAILED(hr = joysticks[i].handle->GetDeviceState(sizeof(DIJOYSTATE2), &joysticks[i].state)))
                         printf("Failed at 'GetDeviceState'\n");
                 }
             }
@@ -176,9 +218,9 @@ DWORD WINAPI _joyThread(LPVOID lpParam)
 
     for (int i=0;i<4;i++)
     {
-        if (joysticks[i]!=NULL)
-            joysticks[i]->Unacquire();
-        joysticks[i]=NULL;
+        if (joysticks[i].handle!=NULL)
+			joysticks[i].handle->Unacquire();
+		joysticks[i].handle=NULL;
     }
 
     _joyThreadEnded=true;
@@ -223,6 +265,19 @@ DLLEXPORT int simExtJoyGetCount() {
 	return joystickCount;
 }
 
+DLLEXPORT bool simExtJoyGetDevice(int joyId, Joystick& device) {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	launchThreadIfNeeded();
+
+	if (joyId > joystickCount)
+		return false;
+
+	device = joysticks[joyId];
+
+	return true;
+}
+
+
 DLLEXPORT bool simExtJoyGetData(int joyId, DIJOYSTATE2& state) {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	launchThreadIfNeeded();
@@ -230,8 +285,13 @@ DLLEXPORT bool simExtJoyGetData(int joyId, DIJOYSTATE2& state) {
 	if (joyId > joystickCount)
 		return false;
 
-	state = joystickStates[joyId];
+	state = joysticks[joyId].state;
 
+	return true;
+}
+
+
+DLLEXPORT bool simExtJoySetForces(const std::array<int, 2>& forces) {
 	return true;
 }
 
@@ -294,29 +354,29 @@ void LUA_GETDATA_CALLBACK(SLuaCallBack* p)
         p->outputArgTypeAndSize[2*4+0]=sim_lua_arg_int|sim_lua_arg_table;   // The return value is an int table
         p->outputArgTypeAndSize[2*4+1]=4;                   // table size is 4 (the 4 pov values)
         p->outputInt=(simInt*)simCreateBuffer(13*sizeof(int)); // 13 int return value (3 for the axes + 1 for the buttons + 3 for rot axis, +2 for slider, +4 for pov)
-        p->outputInt[0]=joystickStates[index].lX; // axis 1
-        p->outputInt[1]=joystickStates[index].lY; // axis 2
-        p->outputInt[2]=joystickStates[index].lZ; // axis 3
+        p->outputInt[0]=joysticks[index].state.lX; // axis 1
+        p->outputInt[1]=joysticks[index].state.lY; // axis 2
+        p->outputInt[2]=joysticks[index].state.lZ; // axis 3
         
         // now the buttons:
         p->outputInt[3]=0;
         for (int i=0;i<16;i++)
         {
-            if (joystickStates[index].rgbButtons[i]!=0)
+            if (joysticks[index].state.rgbButtons[i]!=0)
                 p->outputInt[3]|=(1<<i);
         }
 
-        p->outputInt[4]=joystickStates[index].lRx; // rot axis 1
-        p->outputInt[5]=joystickStates[index].lRy; // rot axis 2
-        p->outputInt[6]=joystickStates[index].lRz; // rot axis 3
+        p->outputInt[4]=joysticks[index].state.lRx; // rot axis 1
+        p->outputInt[5]=joysticks[index].state.lRy; // rot axis 2
+        p->outputInt[6]=joysticks[index].state.lRz; // rot axis 3
 
-        p->outputInt[7]=joystickStates[index].rglSlider[0]; // slider 1
-        p->outputInt[8]=joystickStates[index].rglSlider[1]; // slider 2
+        p->outputInt[7]=joysticks[index].state.rglSlider[0]; // slider 1
+        p->outputInt[8]=joysticks[index].state.rglSlider[1]; // slider 2
 
-        p->outputInt[9]=joystickStates[index].rgdwPOV[0]; // POV value 1
-        p->outputInt[10]=joystickStates[index].rgdwPOV[1]; // POV value 1
-        p->outputInt[11]=joystickStates[index].rgdwPOV[2]; // POV value 1
-        p->outputInt[12]=joystickStates[index].rgdwPOV[3]; // POV value 1
+        p->outputInt[9]=joysticks[index].state.rgdwPOV[0]; // POV value 1
+        p->outputInt[10]=joysticks[index].state.rgdwPOV[1]; // POV value 1
+        p->outputInt[11]=joysticks[index].state.rgdwPOV[2]; // POV value 1
+        p->outputInt[12]=joysticks[index].state.rgdwPOV[3]; // POV value 1
 
     }
 }

@@ -5,6 +5,7 @@
 #include "v_repExtJoystickConsole.h"
 #include "v_repExtJoystick.h"
 #include <iostream>
+#include <windows.h> 
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -14,14 +15,36 @@
 // The one and only application object
 
 CWinApp theApp;
+bool exit_flag = false;
 
 using namespace std;
+
+BOOL WINAPI consoleHandler(DWORD signal) {
+	if (signal == CTRL_C_EVENT) {
+		printf("Ctrl-C handled\n"); // do cleanup
+		exit_flag = true;
+	}
+
+	return TRUE;
+}
 
 int run() {
 	std::cout << "v_repExtJoystick" << std::endl;
 	std::cout << "Joystick count: " << simExtJoyGetCount() << std::endl;
 
 	killThreadIfNeeded();
+
+	while (!exit_flag) {
+		for (int i = 0; i < simExtJoyGetCount(); i++) {
+			Joystick device;
+			if (simExtJoyGetDevice(i, device)) {
+				system("cls"); // Avoids flickering
+				device.print();
+			}
+		}
+
+		Sleep(100);
+	}
 
 	std::system("pause");
 	return 0;
@@ -44,7 +67,13 @@ int main()
         }
         else
         {
-			nRetCode = run();
+			if (!SetConsoleCtrlHandler(consoleHandler, TRUE)) {
+				printf("\nERROR: Could not set control handler");
+				nRetCode =  1;
+			}
+			else {
+				nRetCode = run();
+			}
 		}
     }
     else
