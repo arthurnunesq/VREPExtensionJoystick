@@ -30,21 +30,16 @@ BOOL WINAPI consoleHandler(DWORD signal) {
 
 int run() {
 	std::cout << "v_repExtJoystick" << std::endl;
-	std::cout << "Joystick count: " << simExtJoyGetCount() << std::endl;
-
-	killThreadIfNeeded();
+	std::cout << "Joystick count: " << v_repExtJoystick::getJoyCount() << std::endl;
 
 	while (!exit_flag) {
-		for (int i = 0; i < simExtJoyGetCount(); i++) {
-			Joystick device;
-			if (simExtJoyGetDevice(i, device)) {
-				system("cls"); // Avoids flickering
-				device.print();
-			}
-		}
+		system("cls"); // Avoids flickering
+		v_repExtJoystick::printJoyState(0);
 
 		Sleep(100);
 	}
+
+	v_repExtJoystick::start();
 
 	std::system("pause");
 	return 0;

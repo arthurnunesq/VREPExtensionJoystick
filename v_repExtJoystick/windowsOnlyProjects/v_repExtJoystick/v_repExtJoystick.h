@@ -10,24 +10,26 @@
 #define VREP_DLLEXPORT extern "C" __declspec(dllexport)
 #define DLLEXPORT __declspec(dllexport)
 
-class DLLEXPORT Joystick {
+namespace v_repExtJoystick {
+	class DLLEXPORT Joystick {
 	public:
 		int id = 0;
 		LPDIRECTINPUTDEVICE8 handle = NULL;
 		DIDEVCAPS capabilities;
 		DIJOYSTATE2 state;
 		int num_force_feedback_axes = 0;
+	};
 
-		void print(); // For debug purposes
-};
+	DLLEXPORT void start();
+	DLLEXPORT void stop();
 
-DLLEXPORT void launchThreadIfNeeded();
-DLLEXPORT void killThreadIfNeeded();
-
-DLLEXPORT int simExtJoyGetCount();
-DLLEXPORT bool simExtJoyGetDevice(int joyId, Joystick& device);
-DLLEXPORT bool simExtJoyGetData(int joyId, DIJOYSTATE2& state);
-DLLEXPORT bool simExtJoySetForces(const std::array<int, 2>& forces);
+	DLLEXPORT int getJoyCount();
+	DLLEXPORT bool getJoyState(int joyId, Joystick& device);
+	DLLEXPORT bool printJoyState(int joyId);
+	DLLEXPORT bool setJoyForces(int joyId, const std::array<int, 2>& forces);
+	DLLEXPORT bool enableJoyForceControl(int joyId);
+	DLLEXPORT bool disableJoyForceControl(int joyId);
+}
 
 // The 3 required entry points of the plugin:
 VREP_DLLEXPORT unsigned char v_repStart(void* reservedPointer,int reservedInt);
