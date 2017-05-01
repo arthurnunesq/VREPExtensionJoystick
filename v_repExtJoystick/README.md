@@ -38,3 +38,5 @@ http://stackoverflow.com/questions/4922883/unmanaged-c-dll-dependency-not-gettin
 http://stackoverflow.com/questions/13590014/visual-studio-copy-local-on-reference-doesnt-work
 http://stackoverflow.com/questions/36374685/dumpbin-is-not-recognized-dumpbin-exe-is-missing
 
+*) Asking for stdax at begin of cpp files
+http://stackoverflow.com/questions/8862840/unexpected-end-of-file-error

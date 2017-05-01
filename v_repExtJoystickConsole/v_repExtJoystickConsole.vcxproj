@@ -93,7 +93,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>
       </SDLCheck>
-      <AdditionalIncludeDirectories>..\v_repExtJoystick\windowsOnlyProjects\v_repExtJoystick;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\v_repExtJoystick;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
@@ -176,14 +176,8 @@
     <ResourceCompile Include="v_repExtJoystickConsole.rc" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\v_repExtJoystick\windowsOnlyProjects\v_repExtJoystick\v_repExtJoystick.vcxproj">
+    <ProjectReference Include="..\v_repExtJoystick\v_repExtJoystick.vcxproj">
       <Project>{30a53b8e-e1a6-451c-b3f4-4e1468723ffa}</Project>
-      <Private>true</Private>
-      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
-      <CopyLocal>true</CopyLocal>
-      <CopyLocalSatelliteAssemblies>false</CopyLocalSatelliteAssemblies>
-      <LinkLibraryDependencies>true</LinkLibraryDependencies>
-      <UseLibraryDependencyInputs>true</UseLibraryDependencyInputs>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
