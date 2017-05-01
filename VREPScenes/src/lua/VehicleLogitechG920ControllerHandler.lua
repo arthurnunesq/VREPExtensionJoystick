@@ -3,6 +3,7 @@ api = require('api')
 ModelComponentScriptBase = require('ModelComponentScriptBase')
 Vehicle = require('Vehicle')
 JoyState = require('JoyState')
+PID = require('PID')
 
 local VehicleLogitechG920ControllerHandler = class(ModelComponentScriptBase, function(self, scriptHandle)
     -- simAddStatusbarMessage("VehicleLogitechG920ControllerHandler ctor")
@@ -62,6 +63,11 @@ local VehicleLogitechG920ControllerHandler = class(ModelComponentScriptBase, fun
     self.lastIsLeftShoulderPressedState = false
     self.lastIsRightShoulderPressedState = false
     self.lastIsRightThumbStickPressedState = nil
+
+    -- ==============================================================
+    -- POSITION CONTROL
+    -- ==============================================================
+    self.position_controller = PID()
 end)
 
 function VehicleLogitechG920ControllerHandler:firstExecution()
@@ -167,8 +173,16 @@ function VehicleLogitechG920ControllerHandler:actuation()
         self.recordOdom = (self.recordOdom+1)%2
     end
 
-    self:setForce(self:getThrottle())
+
+    -- Position control ============================================== 
+
+    self.position_controller.setpoint = self:getThrottle()
+    self.position_controller:step(self:getSteering())
+    self:setForce(self.position_controller.control_effort)
+
+    -- self:setForce(self:getThrottle())
           
+    -- Signals ============================================== 
     if(self.vehicle:isManualControlSource(self.manualControlSourceId)) then
         simSetFloatSignal(self.vehicle.manualRefSpeedSignalName, self.refSpeed)
         simSetFloatSignal(self.vehicle.manualRefSteeringAngleSignalName, self.refSteeringAngle)
@@ -189,7 +203,7 @@ function VehicleLogitechG920ControllerHandler:actuation()
 
 end
 
-function VehicleLogitechG920ControllerHandler:sensing()
+function VehicleLogitechG920ControllerHandler:sensing()    
 end
 
 function VehicleLogitechG920ControllerHandler:cleanup()
