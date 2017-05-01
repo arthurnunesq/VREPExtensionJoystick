@@ -24,7 +24,7 @@ namespace v_repExtJoystick {
 		BOOL CALLBACK enumCallback(const DIDEVICEINSTANCE* instance, VOID* context)
 		{
 			HRESULT hr;
-			hr = di->CreateDevice(instance->guidInstance, &joysticks[currentDeviceIndex].handle, NULL);
+			hr = di->CreateDevice(instance->guidInstance, &joysticks[currentDeviceIndex].handle, nullptr);
 			if (FAILED(hr))
 				return DIENUM_CONTINUE;
 
@@ -38,23 +38,26 @@ namespace v_repExtJoystick {
 		{
 			HWND hDlg = (HWND)context;
 
-			DIPROPRANGE propRange;
-			propRange.diph.dwSize = sizeof(DIPROPRANGE);
-			propRange.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-			propRange.diph.dwHow = DIPH_BYID;
-			propRange.diph.dwObj = instance->dwType;
-			propRange.lMin = -1000;
-			propRange.lMax = +1000;
+			//DIPROPRANGE propRange;
+			//propRange.diph.dwSize = sizeof(DIPROPRANGE);
+			//propRange.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+			//propRange.diph.dwHow = DIPH_BYID;
+			//propRange.diph.dwObj = instance->dwType;
+			//propRange.lMin = -1000;
+			//propRange.lMax = +1000;
 
-			// Set the range for the axis
-			if (FAILED(joysticks[currentDeviceIndex].handle->SetProperty(DIPROP_RANGE, &propRange.diph))) {
-				return DIENUM_STOP;
-			}
+			//// Set the range for the axis
+			//if (FAILED(joysticks[currentDeviceIndex].handle->SetProperty(DIPROP_RANGE, &propRange.diph))) {
+			//	return DIENUM_STOP;
+			//}
 
 			// Counts num of forcefeedback enables axes
 			auto pdwNumForceFeedbackAxis = reinterpret_cast<DWORD*>(context);
 			if ((instance->dwFlags & DIDOI_FFACTUATOR) != 0)
-				joysticks[currentDeviceIndex].num_force_feedback_axes++;
+				joysticks[currentDeviceIndex].num_force_axes++;
+			// This simple sample only supports one or two axis joysticks
+			if (joysticks[currentDeviceIndex].num_force_axes > 2)
+				joysticks[currentDeviceIndex].num_force_axes = 2;
 
 			return DIENUM_CONTINUE;
 		}
@@ -66,8 +69,8 @@ namespace v_repExtJoystick {
 
 			HRESULT hr;
 			// Create a DirectInput device
-			if (FAILED(hr = DirectInput8Create(GetModuleHandle(NULL), DIRECTINPUT_VERSION,
-				IID_IDirectInput8, (VOID**)&di, NULL)))
+			if (FAILED(hr = DirectInput8Create(GetModuleHandle(nullptr), DIRECTINPUT_VERSION,
+				IID_IDirectInput8, (VOID**)&di, nullptr)))
 			{
 				printf("Failed initializing DirectInput library.\n");
 				_joyThreadEnded = true;
@@ -77,7 +80,7 @@ namespace v_repExtJoystick {
 
 			// Look for the first simple joystick we can find.
 			if (FAILED(hr = di->EnumDevices(DI8DEVCLASS_GAMECTRL, enumCallback,
-				NULL, DIEDFL_ATTACHEDONLY)))
+				nullptr, DIEDFL_ATTACHEDONLY)))
 			{
 				printf("Failed enumerating devices.\n");
 				_joyThreadEnded = true;
@@ -89,7 +92,7 @@ namespace v_repExtJoystick {
 			joystickCount = 0;
 			for (int i = 0;i < 4;i++)
 			{
-				if (joysticks[i].handle != NULL)
+				if (joysticks[i].handle != nullptr)
 					joystickCount++;
 			}
 			if (joystickCount == 0)
@@ -102,12 +105,12 @@ namespace v_repExtJoystick {
 			// Set joystick properties:
 			for (int i = 0;i < 4;i++)
 			{
-				if (joysticks[i].handle != NULL)
+				if (joysticks[i].handle != nullptr)
 				{
 					if (FAILED(hr = joysticks[i].handle->SetDataFormat(&c_dfDIJoystick2)))
 						printf("Failed at 'SetDataFormat'.\n");
 
-					if (FAILED(hr = joysticks[i].handle->SetCooperativeLevel(NULL, DISCL_EXCLUSIVE | DISCL_FOREGROUND)))
+					if (FAILED(hr = joysticks[i].handle->SetCooperativeLevel(nullptr, DISCL_EXCLUSIVE | DISCL_FOREGROUND)))
 						(void)0;// do not output an error here!      printf("Failed at 'SetCooperativeLevel'.\n");
 					// http://stackoverflow.com/a/13939469/702828
 
@@ -116,8 +119,16 @@ namespace v_repExtJoystick {
 						printf("Failed at 'GetCapabilities'.\n");
 
 					currentDeviceIndex = i;
-					if (FAILED(hr = joysticks[i].handle->EnumObjects(enumAxesCallback, NULL, DIDFT_AXIS)))
+					if (FAILED(hr = joysticks[i].handle->EnumObjects(enumAxesCallback, nullptr, DIDFT_AXIS)))
 						printf("Failed at 'EnumObjects'.\n");
+
+					enableJoyForceControl(i);
+					hr = joysticks[i].handle->Acquire();
+
+					if (joysticks[i].force_effect) {
+						printf("Starting force effect.\n");
+						joysticks[i].force_effect->Start(1, 0); // Start the effect
+					}
 				}
 			}
 			joyGoodToRead = true;
@@ -126,7 +137,7 @@ namespace v_repExtJoystick {
 			{
 				for (int i = 0;i < 4;i++)
 				{
-					if (joysticks[i].handle != NULL)
+					if (joysticks[i].handle != nullptr)
 					{
 						hr = joysticks[i].handle->Poll();
 						bool cont = true;
@@ -160,9 +171,15 @@ namespace v_repExtJoystick {
 
 			for (int i = 0;i < 4;i++)
 			{
-				if (joysticks[i].handle != NULL)
+				if (joysticks[i].handle) {
 					joysticks[i].handle->Unacquire();
-				joysticks[i].handle = NULL;
+					joysticks[i].handle = nullptr;
+				}
+
+				if (joysticks[i].force_effect) { 
+					joysticks[i].force_effect->Release(); 
+					joysticks[i].force_effect = nullptr;
+				}
 			}
 
 			_joyThreadEnded = true;
@@ -178,7 +195,7 @@ namespace v_repExtJoystick {
 				_joyThreadEnded = false;
 				_joyThreadLaunched = false;
 				joyGoodToRead = false;
-				CreateThread(NULL, 0, _joyThread, NULL, THREAD_PRIORITY_NORMAL, NULL);
+				CreateThread(nullptr, 0, _joyThread, nullptr, THREAD_PRIORITY_NORMAL, nullptr);
 				while (!_joyThreadLaunched)
 					Sleep(2);
 				while (_inJoyThread && (!joyGoodToRead))
@@ -199,6 +216,39 @@ namespace v_repExtJoystick {
 			}
 		}
 
+		INT normalizedForceToDInputForce(float nforce) {
+			INT force = (INT)nforce*DI_FFNOMINALMAX;
+
+			// Keep force within bounds
+			if (force < -DI_FFNOMINALMAX)
+				force = -DI_FFNOMINALMAX;
+
+			if (force > +DI_FFNOMINALMAX)
+				force = +DI_FFNOMINALMAX;
+
+			return force;
+		}
+
+		std::string SetPropertyHRESULTToString(HRESULT hr) {
+			// https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.idirectinputdevice8.idirectinputdevice8.setproperty(v=vs.85).aspx
+			std::string str = "INVALID_RESULT";
+			switch (hr)
+			{
+			case DI_OK: str					= "DI_OK";					break;
+			case DI_PROPNOEFFECT: str		= "DI_PROPNOEFFECT";		break;
+			case DIERR_INVALIDPARAM: str	= "DIERR_INVALIDPARAM";		break;
+			case DIERR_NOTINITIALIZED: str	= "DIERR_NOTINITIALIZED";	break;
+			case DIERR_OBJECTNOTFOUND: str	= "DIERR_OBJECTNOTFOUND";	break;
+			case DIERR_UNSUPPORTED: str		= "DIERR_UNSUPPORTED";		break;
+			default:
+				std::stringstream stream;
+				//stream << std::hex << hr;
+				stream << std::hex << hr;
+				str = stream.str();
+				break;
+			}
+			return str;
+		}
 
 	} // private namespace
 
@@ -272,12 +322,12 @@ namespace v_repExtJoystick {
 		const Joystick& joy = joysticks[joyId];
 		std::ostringstream ss;
 
-		if (joy.handle == NULL) {
+		if (joy.handle == nullptr) {
 			ss << "Invalid joystick instance." << std::endl;
 		}
 		else {
 			ss << "Joystick " << joy.id << std::endl;
-			ss << "nffaxes =  " << joy.num_force_feedback_axes << std::endl;
+			ss << "nffaxes =  " << joy.num_force_axes << std::endl;
 			ss << "axis1 = " << joy.state.lX << std::endl;
 			ss << "axis2 = " << joy.state.lY << std::endl;
 			ss << "axis3 = " << joy.state.lZ << std::endl;
@@ -301,21 +351,161 @@ namespace v_repExtJoystick {
 		return true;
 	}
 
-	DLLEXPORT bool setJoyForces(int joyId, const std::array<int, 2>& forces) {
+	DLLEXPORT bool setJoyForces(int joyId, const std::array<float, 2>& forces) {
 		if (joyId > joystickCount)
 			return false;
+
+		Joystick& joy = joysticks[joyId];
+
+		enableJoyForceControl(joyId);
+
+		if (!joy.force_feedback_enabled) {
+			printf("Force feedback disabled'.\n");
+			return false;
+		}
+
+		joy.forces = forces;
+		INT xforce = normalizedForceToDInputForce(joy.forces[0]);
+		INT yforce = normalizedForceToDInputForce(joy.forces[1]);
+		xforce = DI_FFNOMINALMAX / 2;
+		yforce = DI_FFNOMINALMAX / 2;
+
+		// Modifying an effect is basically the same as creating a new one, except
+		// you need only specify the parameters you are modifying
+		LONG rglDirection[2] = { 0, 0 };
+		DICONSTANTFORCE cf;
+
+		if (joy.num_force_axes == 1)
+		{
+			// If only one force feedback axis, then apply only one direction and 
+			// keep the direction at zero
+			cf.lMagnitude = xforce;
+			rglDirection[0] = 0;
+		}
+		else
+		{
+			// If two force feedback axis, then apply magnitude from both directions 
+			rglDirection[0] = xforce;
+			rglDirection[1] = yforce;
+			cf.lMagnitude = (DWORD)sqrt((double)xforce * xforce +
+				(double)yforce * (double)yforce);
+		}
+
+		printf("Setting force to (x = %d, y = %d, mag = %d).\n", rglDirection[0], rglDirection[1], cf.lMagnitude);
+
+		DIEFFECT eff;
+		ZeroMemory(&eff, sizeof(eff));
+		eff.dwSize = sizeof(DIEFFECT);
+		eff.dwFlags = DIEFF_CARTESIAN | DIEFF_OBJECTOFFSETS;
+		eff.cAxes = joy.num_force_axes;
+		eff.rglDirection = rglDirection;
+		eff.lpEnvelope = 0;
+		eff.cbTypeSpecificParams = sizeof(DICONSTANTFORCE);
+		eff.lpvTypeSpecificParams = &cf;
+		eff.dwStartDelay = 0;
+
+		// Now set the new parameters and start the effect immediately.
+		if (FAILED(joy.force_effect->SetParameters(&eff, DIEP_DIRECTION |
+			DIEP_TYPESPECIFICPARAMS |
+			DIEP_START))) {
+			printf("Failed at 'joy.force_effect->SetParameters'.\n");
+			return false;
+		}
+
 		return true;
 	}
 
 	DLLEXPORT bool enableJoyForceControl(int joyId) {
 		if (joyId > joystickCount)
 			return false;
+
+		Joystick& joy = joysticks[joyId];
+		if (joy.force_feedback_enabled) {
+			return true;
+		}
+
+		// Since we will be playing force feedback effects, we should disable the
+		// auto-centering spring.
+		DIPROPDWORD dipdw;
+		dipdw.diph.dwSize = sizeof(DIPROPDWORD);
+		dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+		dipdw.diph.dwObj = 0;
+		dipdw.diph.dwHow = DIPH_DEVICE;
+		dipdw.dwData = DIPROPAUTOCENTER_OFF;
+
+		INT hr = DI_OK;
+		if (FAILED(hr =joy.handle->SetProperty(DIPROP_AUTOCENTER, &dipdw.diph))) {
+			std::string result_str = SetPropertyHRESULTToString(hr);
+			printf("Failed at 'SetProperty(DIPROP_AUTOCENTER, &dipdw.diph). Result = %s'.\n", result_str.c_str());
+			return false;
+		}
+
+		DWORD rgdwAxes[2] = { DIJOFS_X, DIJOFS_Y };
+		LONG rglDirection[2] = { 0, 0 };
+		DICONSTANTFORCE cf = { 0 };
+
+		DIEFFECT eff;
+		ZeroMemory(&eff, sizeof(eff));
+		eff.dwSize = sizeof(DIEFFECT);
+		eff.dwFlags = DIEFF_CARTESIAN | DIEFF_OBJECTOFFSETS;
+		eff.dwDuration = INFINITE;
+		eff.dwSamplePeriod = 0;
+		eff.dwGain = DI_FFNOMINALMAX;
+		eff.dwTriggerButton = DIEB_NOTRIGGER;
+		eff.dwTriggerRepeatInterval = 0;
+		eff.cAxes = joy.num_force_axes;
+		eff.rgdwAxes = rgdwAxes;
+		eff.rglDirection = rglDirection;
+		eff.lpEnvelope = 0;
+		eff.cbTypeSpecificParams = sizeof(DICONSTANTFORCE);
+		eff.lpvTypeSpecificParams = &cf;
+		eff.dwStartDelay = 0;
+
+		// Create the prepared effect
+		if (FAILED(joy.handle->CreateEffect(GUID_ConstantForce,
+			&eff, &joy.force_effect, nullptr)))
+		{
+			printf("Failed at 'CreateEffect'.\n");
+			return false;
+		}
+		if (!joy.force_effect) {
+			printf("Invalid force_effect'.\n");
+			return false;
+		}
+		joy.force_feedback_enabled = true;
+
 		return true;
 	}
 
 	DLLEXPORT bool disableJoyForceControl(int joyId) {
 		if (joyId > joystickCount)
 			return false;
+		Joystick& joy = joysticks[joyId];
+		if (!joy.force_feedback_enabled) {
+			return true;
+		}
+
+		// Reenables auto center spring.
+		DIPROPDWORD dipdw;
+		dipdw.diph.dwSize = sizeof(DIPROPDWORD);
+		dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+		dipdw.diph.dwObj = 0;
+		dipdw.diph.dwHow = DIPH_DEVICE;
+		dipdw.dwData = DIPROPAUTOCENTER_ON;
+
+		INT hr = DI_OK;
+		if (FAILED(hr = joy.handle->SetProperty(DIPROP_AUTOCENTER, &dipdw.diph))) {
+			std::string result_str = SetPropertyHRESULTToString(hr);
+			printf("Failed at 'SetProperty(DIPROP_AUTOCENTER, &dipdw.diph). Result = %s'.\n", result_str.c_str());
+			return false;
+		}
+		if (!joy.force_effect) {
+			printf("Invalid force_effect'.\n");
+			return false;
+		}
+		joy.force_effect->Stop();
+		joy.force_feedback_enabled = false;
+
 		return true;
 	}
 
@@ -442,13 +632,13 @@ VREP_DLLEXPORT unsigned char v_repStart(void* reservedPointer,int reservedInt)
 
     // Dynamically load and bind V-REP functions:
     char curDirAndFile[1024];
-    GetModuleFileName(NULL,curDirAndFile,1023);
+    GetModuleFileName(nullptr,curDirAndFile,1023);
     PathRemoveFileSpec(curDirAndFile);
     std::string currentDirAndPath(curDirAndFile);
     std::string temp(currentDirAndPath);
     temp+="\\v_rep.dll";
     vrepLib=loadVrepLibrary(temp.c_str());
-    if (vrepLib==NULL)
+    if (vrepLib==nullptr)
     {
         std::cout << "Error, could not find or correctly load v_rep.dll. Cannot start 'Joystick' plugin.\n";
         return(0); // Means error, V-REP will unload this plugin
@@ -496,7 +686,7 @@ VREP_DLLEXPORT void* v_repMessage(int message,int* auxiliaryData,void* customDat
     simGetIntegerParameter(sim_intparam_error_report_mode,&errorModeSaved);
     simSetIntegerParameter(sim_intparam_error_report_mode,sim_api_errormessage_ignore);
 
-    void* retVal=NULL;
+    void* retVal=nullptr;
 
     if (message==sim_message_eventcallback_instancepass)
     { // It is important to always correctly react to events in V-REP. This message is the most convenient way to do so:

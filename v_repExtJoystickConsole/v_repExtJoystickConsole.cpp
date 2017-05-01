@@ -32,14 +32,28 @@ int run() {
 	std::cout << "v_repExtJoystick" << std::endl;
 	std::cout << "Joystick count: " << v_repExtJoystick::getJoyCount() << std::endl;
 
-	while (!exit_flag) {
-		system("cls"); // Avoids flickering
-		v_repExtJoystick::printJoyState(0);
+	//while (!exit_flag) {
+	//	system("cls"); // Avoids flickering
+	//	v_repExtJoystick::printJoyState(0);
 
+	//	Sleep(100);
+	//}
+
+	int joy_count = 0;
+	while (!exit_flag) {
+		joy_count = v_repExtJoystick::getJoyCount();
+		if (joy_count > 0) break;
 		Sleep(100);
 	}
+	if (joy_count < 1) return 0;
 
-	v_repExtJoystick::start();
+	int joy_id = 0;
+	//v_repExtJoystick::enableJoyForceControl(joy_id);
+	v_repExtJoystick::setJoyForces(joy_id, { 1.0f, 1.0f });
+	Sleep(5000);
+	//v_repExtJoystick::disableJoyForceControl(joy_id);
+
+	v_repExtJoystick::stop();
 
 	std::system("pause");
 	return 0;
