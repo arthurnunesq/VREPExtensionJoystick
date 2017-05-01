@@ -30,6 +30,12 @@
     <ClCompile Include="common\luaFunctionDataItem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="common\scriptFunctionData.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="common\scriptFunctionDataItem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="common\socketInConnection.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

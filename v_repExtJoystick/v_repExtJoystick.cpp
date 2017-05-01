@@ -3,8 +3,8 @@
 #include "stdafx.h"
 #include "v_repExtJoystick.h"
 #include "v_repLib.h"
+#include "luaFunctionData.h"
 #include "scriptFunctionData.h"
-//#include "luaFunctionData.h"
 #include <iostream>
 #include <sstream>
 #include <shlwapi.h> // for the "PathRemoveFileSpec" function
@@ -529,24 +529,24 @@ const int inArgs_SETFORCES[] = {
 
 void LUA_SETFORCES_CALLBACK(SScriptCallBack* cb)
 {
-	//CScriptFunctionData D;
-	//bool success = false;
-	//if (D.readDataFromStack(cb->stackID, inArgs_SETFORCES, inArgs_SETFORCES[0], LUA_SETFORCES))
-	//{
-	//	std::vector<CScriptFunctionDataItem>* inData = D.getInDataPtr();
+	CScriptFunctionData D;
+	bool success = false;
+	if (D.readDataFromStack(cb->stackID, inArgs_SETFORCES, inArgs_SETFORCES[0], LUA_SETFORCES))
+	{
+		std::vector<CScriptFunctionDataItem>* inData = D.getInDataPtr();
 
-	//	success = v_repExtJoystick::setJoyForces(
-	//		inData->at(0).int32Data[0],
-	//		//{ inData->at(1).floatData[0], inData->at(1).floatData[1] }
-	//		{ inData->at(1).floatData[0], inData->at(1).floatData[0] }
-	//	);
-	//}
-	//D.pushOutData(CScriptFunctionDataItem(success));
-	//D.writeDataToStack(cb->stackID);
+		success = v_repExtJoystick::setJoyForces(
+			inData->at(0).int32Data[0],
+			//{ inData->at(1).floatData[0], inData->at(1).floatData[1] }
+			{ inData->at(1).floatData[0], inData->at(1).floatData[0] }
+		);
+	}
+	D.pushOutData(CScriptFunctionDataItem(success));
+	D.writeDataToStack(cb->stackID);
 }
 
 void REGISTER_LUA_SETFORCES() {
-	//simRegisterScriptCallbackFunction(LUA_SETFORCES "@" PLUGIN_NAME, "boolean result=" LUA_SETFORCES "(number joyId, number force)", LUA_SETFORCES_CALLBACK);
+	simRegisterScriptCallbackFunction(LUA_SETFORCES "@" PLUGIN_NAME, "boolean result=" LUA_SETFORCES "(number joyId, number force)", LUA_SETFORCES_CALLBACK);
 }
 
 // --------------------------------------------------------------------------------------

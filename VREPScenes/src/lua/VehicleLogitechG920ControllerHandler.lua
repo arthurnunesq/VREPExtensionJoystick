@@ -95,7 +95,7 @@ function VehicleLogitechG920ControllerHandler:actuation()
         self.vehicle:setManualControlSource(self.manualControlSourceId)
     end
 
-        -- Command Mapping ==============================================    
+    -- Command Mapping ==============================================    
     throttleCommand = api.applySensibility(self:getThrottle(), self.throttleSensibility)
     brakeCommand = self:getBrakes()
     steeringCommand = self:getSteering()
@@ -166,6 +166,8 @@ function VehicleLogitechG920ControllerHandler:actuation()
     if (recordOdomCommandChanged and recordOdomCommand) then
         self.recordOdom = (self.recordOdom+1)%2
     end
+
+    self:setForce(self:getThrottle())
           
     if(self.vehicle:isManualControlSource(self.manualControlSourceId)) then
         simSetFloatSignal(self.vehicle.manualRefSpeedSignalName, self.refSpeed)
@@ -191,6 +193,7 @@ function VehicleLogitechG920ControllerHandler:sensing()
 end
 
 function VehicleLogitechG920ControllerHandler:cleanup()
+    self:setForce(0.0)
 end
 
 function VehicleLogitechG920ControllerHandler:isControllerConnected()
@@ -219,6 +222,10 @@ function VehicleLogitechG920ControllerHandler:refresh()
     self.previousJoyState = self.joyState
     self.joyState = JoyState(axes, buttons, rotAxes, slider, pov)
     -- self:log(self.joyState:toString())
+end
+
+function VehicleLogitechG920ControllerHandler:setForce(force)
+    simExtJoySetForces(self.joyId, force)
 end
 
 function VehicleLogitechG920ControllerHandler:isStartPressed()
