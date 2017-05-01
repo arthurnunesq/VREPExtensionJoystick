@@ -3,6 +3,9 @@
 #ifndef __AFXWIN_H__
     #error "include 'stdafx.h' before including this file for PCH"
 #endif
+
+#define DIRECTINPUT_VERSION 0x0800
+
 #include <dinput.h>
 #include <array>
 #include <string>
@@ -20,7 +23,7 @@ namespace v_repExtJoystick {
 		int num_force_axes = 0;
 		std::array<float, 2> forces = { 0, 0 };
 		LPDIRECTINPUTEFFECT force_effect = nullptr;
-		bool force_feedback_enabled = false;
+		//bool force_feedback_enabled = false;
 
 	};
 

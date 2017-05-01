@@ -21,6 +21,27 @@ namespace v_repExtJoystick {
 		int currentDeviceIndex = 0;
 		int joystickCount = 0;
 
+		std::string HRESULTToString(HRESULT hr) {
+			// https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.idirectinputdevice8.idirectinputdevice8.setproperty(v=vs.85).aspx
+			std::string str = "INVALID_RESULT";
+			switch (hr)
+			{
+			case DI_OK: str = "DI_OK";					break;
+			case DI_PROPNOEFFECT: str = "DI_PROPNOEFFECT";		break;
+			case DIERR_INVALIDPARAM: str = "DIERR_INVALIDPARAM";		break;
+			case DIERR_NOTINITIALIZED: str = "DIERR_NOTINITIALIZED";	break;
+			case DIERR_OBJECTNOTFOUND: str = "DIERR_OBJECTNOTFOUND";	break;
+			case DIERR_UNSUPPORTED: str = "DIERR_UNSUPPORTED";		break;
+			default:
+				std::stringstream stream;
+				//stream << std::hex << hr;
+				stream << std::hex << hr;
+				str = stream.str();
+				break;
+			}
+			return str;
+		}
+
 		BOOL CALLBACK enumCallback(const DIDEVICEINSTANCE* instance, VOID* context)
 		{
 			HRESULT hr;
@@ -55,9 +76,6 @@ namespace v_repExtJoystick {
 			auto pdwNumForceFeedbackAxis = reinterpret_cast<DWORD*>(context);
 			if ((instance->dwFlags & DIDOI_FFACTUATOR) != 0)
 				joysticks[currentDeviceIndex].num_force_axes++;
-			// This simple sample only supports one or two axis joysticks
-			if (joysticks[currentDeviceIndex].num_force_axes > 2)
-				joysticks[currentDeviceIndex].num_force_axes = 2;
 
 			return DIENUM_CONTINUE;
 		}
@@ -105,29 +123,94 @@ namespace v_repExtJoystick {
 			// Set joystick properties:
 			for (int i = 0;i < 4;i++)
 			{
-				if (joysticks[i].handle != nullptr)
+				Joystick& joy = joysticks[i];
+
+				if (joy.handle != nullptr)
 				{
-					if (FAILED(hr = joysticks[i].handle->SetDataFormat(&c_dfDIJoystick2)))
+					if (FAILED(hr = joy.handle->SetDataFormat(&c_dfDIJoystick2)))
 						printf("Failed at 'SetDataFormat'.\n");
 
-					if (FAILED(hr = joysticks[i].handle->SetCooperativeLevel(nullptr, DISCL_EXCLUSIVE | DISCL_FOREGROUND)))
+					if (FAILED(hr = joy.handle->SetCooperativeLevel(nullptr, DISCL_EXCLUSIVE | DISCL_FOREGROUND)))
 						(void)0;// do not output an error here!      printf("Failed at 'SetCooperativeLevel'.\n");
 					// http://stackoverflow.com/a/13939469/702828
 
-					joysticks[i].capabilities.dwSize = sizeof(DIDEVCAPS);
-					if (FAILED(hr = joysticks[i].handle->GetCapabilities(&joysticks[i].capabilities)))
+					joy.capabilities.dwSize = sizeof(DIDEVCAPS);
+					if (FAILED(hr = joy.handle->GetCapabilities(&joy.capabilities)))
 						printf("Failed at 'GetCapabilities'.\n");
 
+					// Since we will be playing force feedback effects, we should disable the
+					// auto-centering spring.
+					DIPROPDWORD dipdw;
+					dipdw.diph.dwSize = sizeof(DIPROPDWORD);
+					dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+					dipdw.diph.dwObj = 0;
+					dipdw.diph.dwHow = DIPH_DEVICE;
+					dipdw.dwData = DIPROPAUTOCENTER_OFF;
+
+					if (FAILED(joy.handle->SetProperty(DIPROP_AUTOCENTER, &dipdw.diph))) {
+						printf("Failed at 'SetProperty(DIPROP_AUTOCENTER, &dipdw.diph)'.\n");
+						// Must not be acquired.
+						// https://gathering.tweakers.net/forum/list_messages/1719669
+						return false;
+					}
+
 					currentDeviceIndex = i;
-					if (FAILED(hr = joysticks[i].handle->EnumObjects(enumAxesCallback, nullptr, DIDFT_AXIS)))
+					if (FAILED(hr = joy.handle->EnumObjects(enumAxesCallback, nullptr, DIDFT_AXIS)))
 						printf("Failed at 'EnumObjects'.\n");
 
-					enableJoyForceControl(i);
-					hr = joysticks[i].handle->Acquire();
+					// This simple sample only supports one or two axis joysticks
+					if (joy.num_force_axes > 2)
+						joy.num_force_axes = 2;
 
-					if (joysticks[i].force_effect) {
-						printf("Starting force effect.\n");
-						joysticks[i].force_effect->Start(1, 0); // Start the effect
+					// This application needs only one effect: Applying raw forces.
+					DWORD rgdwAxes[2] = { DIJOFS_X, DIJOFS_Y };
+					LONG rglDirection[2] = { 0, 0 };
+					DICONSTANTFORCE cf = { 0 };
+
+					DIEFFECT eff;
+					ZeroMemory(&eff, sizeof(eff));
+					eff.dwSize = sizeof(DIEFFECT);
+					eff.dwFlags = DIEFF_CARTESIAN | DIEFF_OBJECTOFFSETS;
+					eff.dwDuration = INFINITE;
+					eff.dwSamplePeriod = 0;
+					eff.dwGain = DI_FFNOMINALMAX;
+					eff.dwTriggerButton = DIEB_NOTRIGGER;
+					eff.dwTriggerRepeatInterval = 0;
+					eff.cAxes = joy.num_force_axes;
+					eff.rgdwAxes = rgdwAxes;
+					eff.rglDirection = rglDirection;
+					eff.lpEnvelope = 0;
+					eff.cbTypeSpecificParams = sizeof(DICONSTANTFORCE);
+					eff.lpvTypeSpecificParams = &cf;
+					eff.dwStartDelay = 0;
+
+					// Create the prepared effect
+					if (FAILED(joy.handle->CreateEffect(GUID_ConstantForce,
+						&eff, &joy.force_effect, nullptr)))
+					{
+						printf("Failed at 'CreateEffect'.\n");
+					}
+
+					if (!joy.force_effect) {
+						printf("Invalid force_effect'.\n");
+					}
+
+					if (FAILED(joy.handle->Acquire()))
+					{
+						printf("Failed at 'Acquire'.\n");
+					}
+					if (joy.force_effect) {
+						INT hr = DI_OK;
+						if (FAILED(hr = joy.force_effect->Start(1, 0))) {
+							std::string str = HRESULTToString(hr);
+							printf("Failed at 'force_effect->Start'. Result = %s.\n", str.c_str());
+							// Keep getting "80040205", DIERR_NOTEXCLUSIVEACQUIRED & VFW_E_FILTER_ACTIVE. Why?
+							// https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.idirectinputdevice8.idirectinputdevice8.setcooperativelevel(v=vs.85).aspx
+							// https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.idirectinputeffect.idirectinputeffect.start(v=vs.85).aspx
+							// http://forum.devmaster.net/t/unknown-hresult-0x8006fc24-from-directinput/23425
+							// https://github.com/freezedev/survival-guide-for-pirates/blob/master/lib/Dependencies/DirectX/DirectInput.pas
+							// http://forums.ni.com/t5/LabVIEW/control-de-retroalimentacion-de-fuerza-volante-de-juegos/td-p/577046?db=5
+						}
 					}
 				}
 			}
@@ -227,27 +310,6 @@ namespace v_repExtJoystick {
 				force = +DI_FFNOMINALMAX;
 
 			return force;
-		}
-
-		std::string SetPropertyHRESULTToString(HRESULT hr) {
-			// https://msdn.microsoft.com/en-us/library/windows/desktop/microsoft.directx_sdk.idirectinputdevice8.idirectinputdevice8.setproperty(v=vs.85).aspx
-			std::string str = "INVALID_RESULT";
-			switch (hr)
-			{
-			case DI_OK: str					= "DI_OK";					break;
-			case DI_PROPNOEFFECT: str		= "DI_PROPNOEFFECT";		break;
-			case DIERR_INVALIDPARAM: str	= "DIERR_INVALIDPARAM";		break;
-			case DIERR_NOTINITIALIZED: str	= "DIERR_NOTINITIALIZED";	break;
-			case DIERR_OBJECTNOTFOUND: str	= "DIERR_OBJECTNOTFOUND";	break;
-			case DIERR_UNSUPPORTED: str		= "DIERR_UNSUPPORTED";		break;
-			default:
-				std::stringstream stream;
-				//stream << std::hex << hr;
-				stream << std::hex << hr;
-				str = stream.str();
-				break;
-			}
-			return str;
 		}
 
 	} // private namespace
@@ -357,13 +419,6 @@ namespace v_repExtJoystick {
 
 		Joystick& joy = joysticks[joyId];
 
-		enableJoyForceControl(joyId);
-
-		if (!joy.force_feedback_enabled) {
-			printf("Force feedback disabled'.\n");
-			return false;
-		}
-
 		joy.forces = forces;
 		INT xforce = normalizedForceToDInputForce(joy.forces[0]);
 		INT yforce = normalizedForceToDInputForce(joy.forces[1]);
@@ -419,92 +474,12 @@ namespace v_repExtJoystick {
 		if (joyId > joystickCount)
 			return false;
 
-		Joystick& joy = joysticks[joyId];
-		if (joy.force_feedback_enabled) {
-			return true;
-		}
-
-		// Since we will be playing force feedback effects, we should disable the
-		// auto-centering spring.
-		DIPROPDWORD dipdw;
-		dipdw.diph.dwSize = sizeof(DIPROPDWORD);
-		dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-		dipdw.diph.dwObj = 0;
-		dipdw.diph.dwHow = DIPH_DEVICE;
-		dipdw.dwData = DIPROPAUTOCENTER_OFF;
-
-		INT hr = DI_OK;
-		if (FAILED(hr =joy.handle->SetProperty(DIPROP_AUTOCENTER, &dipdw.diph))) {
-			std::string result_str = SetPropertyHRESULTToString(hr);
-			printf("Failed at 'SetProperty(DIPROP_AUTOCENTER, &dipdw.diph). Result = %s'.\n", result_str.c_str());
-			return false;
-		}
-
-		DWORD rgdwAxes[2] = { DIJOFS_X, DIJOFS_Y };
-		LONG rglDirection[2] = { 0, 0 };
-		DICONSTANTFORCE cf = { 0 };
-
-		DIEFFECT eff;
-		ZeroMemory(&eff, sizeof(eff));
-		eff.dwSize = sizeof(DIEFFECT);
-		eff.dwFlags = DIEFF_CARTESIAN | DIEFF_OBJECTOFFSETS;
-		eff.dwDuration = INFINITE;
-		eff.dwSamplePeriod = 0;
-		eff.dwGain = DI_FFNOMINALMAX;
-		eff.dwTriggerButton = DIEB_NOTRIGGER;
-		eff.dwTriggerRepeatInterval = 0;
-		eff.cAxes = joy.num_force_axes;
-		eff.rgdwAxes = rgdwAxes;
-		eff.rglDirection = rglDirection;
-		eff.lpEnvelope = 0;
-		eff.cbTypeSpecificParams = sizeof(DICONSTANTFORCE);
-		eff.lpvTypeSpecificParams = &cf;
-		eff.dwStartDelay = 0;
-
-		// Create the prepared effect
-		if (FAILED(joy.handle->CreateEffect(GUID_ConstantForce,
-			&eff, &joy.force_effect, nullptr)))
-		{
-			printf("Failed at 'CreateEffect'.\n");
-			return false;
-		}
-		if (!joy.force_effect) {
-			printf("Invalid force_effect'.\n");
-			return false;
-		}
-		joy.force_feedback_enabled = true;
-
 		return true;
 	}
 
 	DLLEXPORT bool disableJoyForceControl(int joyId) {
 		if (joyId > joystickCount)
 			return false;
-		Joystick& joy = joysticks[joyId];
-		if (!joy.force_feedback_enabled) {
-			return true;
-		}
-
-		// Reenables auto center spring.
-		DIPROPDWORD dipdw;
-		dipdw.diph.dwSize = sizeof(DIPROPDWORD);
-		dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-		dipdw.diph.dwObj = 0;
-		dipdw.diph.dwHow = DIPH_DEVICE;
-		dipdw.dwData = DIPROPAUTOCENTER_ON;
-
-		INT hr = DI_OK;
-		if (FAILED(hr = joy.handle->SetProperty(DIPROP_AUTOCENTER, &dipdw.diph))) {
-			std::string result_str = SetPropertyHRESULTToString(hr);
-			printf("Failed at 'SetProperty(DIPROP_AUTOCENTER, &dipdw.diph). Result = %s'.\n", result_str.c_str());
-			return false;
-		}
-		if (!joy.force_effect) {
-			printf("Invalid force_effect'.\n");
-			return false;
-		}
-		joy.force_effect->Stop();
-		joy.force_feedback_enabled = false;
 
 		return true;
 	}
