@@ -60,18 +60,18 @@ namespace v_repExtJoystick {
 		{
 			HWND hDlg = (HWND)context;
 
-			//DIPROPRANGE propRange;
-			//propRange.diph.dwSize = sizeof(DIPROPRANGE);
-			//propRange.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-			//propRange.diph.dwHow = DIPH_BYID;
-			//propRange.diph.dwObj = instance->dwType;
-			//propRange.lMin = -1000;
-			//propRange.lMax = +1000;
+			DIPROPRANGE propRange;
+			propRange.diph.dwSize = sizeof(DIPROPRANGE);
+			propRange.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+			propRange.diph.dwHow = DIPH_BYID;
+			propRange.diph.dwObj = instance->dwType;
+			propRange.lMin = -1000;
+			propRange.lMax = +1000;
 
-			//// Set the range for the axis
-			//if (FAILED(joysticks[currentDeviceIndex].handle->SetProperty(DIPROP_RANGE, &propRange.diph))) {
-			//	return DIENUM_STOP;
-			//}
+			// Set the range for the axis
+			if (FAILED(joysticks[currentDeviceIndex].handle->SetProperty(DIPROP_RANGE, &propRange.diph))) {
+				return DIENUM_STOP;
+			}
 
 			// Counts num of forcefeedback enables axes
 			auto pdwNumForceFeedbackAxis = reinterpret_cast<DWORD*>(context);
@@ -510,11 +510,20 @@ namespace v_repExtJoystick {
 
 }
 
-#define LUA_GETDATA "simExtJoyGetData"
+LIBRARY vrepLib;
+
+// --------------------------------------------------------------------------------------
+// simExtJoySetForces
+// --------------------------------------------------------------------------------------
 #define LUA_SETFORCE "simExtJoySetForces"
+// --------------------------------------------------------------------------------------
+
+// --------------------------------------------------------------------------------------
+// simExtJoyDisableForceControl
+// --------------------------------------------------------------------------------------
 #define LUA_DISABLEFORCE "simExtJoyDisableForceControl"
 
-LIBRARY vrepLib;
+// --------------------------------------------------------------------------------------
 
 // --------------------------------------------------------------------------------------
 // simExtJoyGetCount
@@ -542,6 +551,8 @@ void REGISTER_LUA_GETCOUNT() {
 // --------------------------------------------------------------------------------------
 // simExtJoyGetCount
 // --------------------------------------------------------------------------------------
+#define LUA_GETDATA "simExtJoyGetData"
+
 void LUA_GETDATA_CALLBACK(SLuaCallBack* p)
 {
     v_repExtJoystick::manageState();
@@ -662,7 +673,17 @@ VREP_DLLEXPORT unsigned char v_repStart(void* reservedPointer,int reservedInt)
 	REGISTER_LUA_GETCOUNT();
 	REGISTER_LUA_GETDATA();
 
-	std::cout << "VREP Joystick plugin, 2017-04-22, Arthur Queiroz.\n";
+	// Tries to enable force control
+	std::string console_path(currentDirAndPath);
+	console_path += "\\vrep.exe";
+	HWND handle = nullptr;
+	handle = FindWindowA(NULL, console_path.c_str());
+	if (handle) {
+		std::cout << "v_repExtJoystick: Acquired VREP console handle.\n";
+		v_repExtJoystick::setWindowHandle(handle);
+	}
+
+	std::cout << "v_repExtJoystick: version 2017-04-22, Arthur Queiroz.\n";
 
     return(3);  // initialization went fine, return the version number of this plugin!
                 // version 2 was for V-REP 2.5.12 or earlier

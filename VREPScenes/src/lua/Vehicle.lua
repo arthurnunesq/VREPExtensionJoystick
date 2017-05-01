@@ -394,7 +394,7 @@ function Vehicle:cleanup()
 end
 
 function Vehicle:isManualControlSource(manualControlSourceId)
-    id = simGetStringSignal(self.manualControlSourceIdSignalName)
+    local id = simGetStringSignal(self.manualControlSourceIdSignalName)
     if(id == nil) then
         return false;
     end

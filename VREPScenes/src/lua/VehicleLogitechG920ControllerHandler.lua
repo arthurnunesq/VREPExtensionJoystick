@@ -43,6 +43,7 @@ local VehicleLogitechG920ControllerHandler = class(ModelComponentScriptBase, fun
     -- ==============================================================
     -- JOYSTICK STATUS
     -- ==============================================================
+    self.manualControlSourceId = "LogitechG920Controller"
     -- Status
     self.refSpeed = 0;
     self.refSteeringAngle = 0;
@@ -166,21 +167,23 @@ function VehicleLogitechG920ControllerHandler:actuation()
         self.recordOdom = (self.recordOdom+1)%2
     end
           
-    simSetFloatSignal(self.vehicle.manualRefSpeedSignalName, self.refSpeed)
-    simSetFloatSignal(self.vehicle.manualRefSteeringAngleSignalName, self.refSteeringAngle)
-    simSetFloatSignal(self.vehicle.manualRefServiceBrakeTorqueSignalName, self.refServiceBrakeTorque)
-    simSetFloatSignal(self.vehicle.manualRefParkingBrakeTorqueSignalName, self.refParkingBrakeTorque)
-    simSetIntegerSignal(self.vehicle.manualRefGearSignalName, self.refGear)
-    simSetIntegerSignal(self.recordOdomSignalName, self.recordOdom)
+    if(self.vehicle:isManualControlSource(self.manualControlSourceId)) then
+        simSetFloatSignal(self.vehicle.manualRefSpeedSignalName, self.refSpeed)
+        simSetFloatSignal(self.vehicle.manualRefSteeringAngleSignalName, self.refSteeringAngle)
+        simSetFloatSignal(self.vehicle.manualRefServiceBrakeTorqueSignalName, self.refServiceBrakeTorque)
+        simSetFloatSignal(self.vehicle.manualRefParkingBrakeTorqueSignalName, self.refParkingBrakeTorque)
+        simSetIntegerSignal(self.vehicle.manualRefGearSignalName, self.refGear)
+        simSetIntegerSignal(self.recordOdomSignalName, self.recordOdom)
+    end
 
-    str ="\n"
-    str = str .. "refSpeed = " .. self.refSpeed .. "\n"
-    str = str .. "refSteeringAngle = " .. self.refSteeringAngle .. "\n"
-    str = str .. "refServiceBrakeTorque = " .. self.refServiceBrakeTorque .. "\n"
-    str = str .. "refParkingBrakeTorque = " .. self.refParkingBrakeTorque .. "\n"
-    str = str .. "refGear = " .. self.refGear .. "\n"
-    str = str .. "recordOdom = " .. self.recordOdom .. "\n"
-    self:log(str)
+    -- str ="\n"
+    -- str = str .. "refSpeed = " .. self.refSpeed .. "\n"
+    -- str = str .. "refSteeringAngle = " .. self.refSteeringAngle .. "\n"
+    -- str = str .. "refServiceBrakeTorque = " .. self.refServiceBrakeTorque .. "\n"
+    -- str = str .. "refParkingBrakeTorque = " .. self.refParkingBrakeTorque .. "\n"
+    -- str = str .. "refGear = " .. self.refGear .. "\n"
+    -- str = str .. "recordOdom = " .. self.recordOdom .. "\n"
+    -- self:log(str)
 
 end
 
