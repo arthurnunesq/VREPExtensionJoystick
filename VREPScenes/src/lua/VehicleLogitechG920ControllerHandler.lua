@@ -12,6 +12,7 @@ local VehicleLogitechG920ControllerHandler = class(ModelComponentScriptBase, fun
 
     self.vehicle = Vehicle(self.modelScriptHandle)
     self.manualControlSourceId = "LogitechG920Controller"
+    self.pid_graph = api.simGetChildObjectHandle(self.vehicle.objHandle, 'LogitechG920ControllerPIDGraph')
 
    -- ==============================================================
     -- ENABLED
@@ -180,6 +181,11 @@ function VehicleLogitechG920ControllerHandler:actuation()
     self.position_controller:step(self:getSteering())
     self:setForce(self.position_controller.control_effort)
 
+    if(self.pid_graph ~= nil) then
+        simSetGraphUserData(self.pid_graph, "e", self.position_controller.error[1])
+        simSetGraphUserData(self.pid_graph, "u", self.position_controller.control_effort)
+    end
+
     -- self:setForce(self:getThrottle())
           
     -- Signals ============================================== 
@@ -239,7 +245,7 @@ function VehicleLogitechG920ControllerHandler:refresh()
 end
 
 function VehicleLogitechG920ControllerHandler:setForce(force)
-    simExtJoySetForces(self.joyId, force)
+    simExtJoySetForces(self.joyId, -force)
 end
 
 function VehicleLogitechG920ControllerHandler:isStartPressed()
