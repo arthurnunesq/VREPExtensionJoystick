@@ -13,6 +13,7 @@ local VehicleLogitechG920ControllerHandler = class(ModelComponentScriptBase, fun
     self.vehicle = Vehicle(self.modelScriptHandle)
     self.manualControlSourceId = "LogitechG920Controller"
     self.pid_graph = api.simGetChildObjectHandle(self.vehicle.objHandle, 'LogitechG920ControllerPIDGraph')
+    self.pid_state_graph = api.simGetChildObjectHandle(self.vehicle.objHandle, 'LogitechG920ControllerPIDStateGraph')
 
    -- ==============================================================
     -- ENABLED
@@ -184,6 +185,12 @@ function VehicleLogitechG920ControllerHandler:actuation()
     if(self.pid_graph ~= nil) then
         simSetGraphUserData(self.pid_graph, "e", self.position_controller.error[1])
         simSetGraphUserData(self.pid_graph, "u", self.position_controller.control_effort)
+        simSetGraphUserData(self.pid_graph, "de", self.position_controller.error_deriv[1])
+    end    
+    if(self.pid_state_graph ~= nil) then
+        simSetGraphUserData(self.pid_state_graph, "x", self.position_controller.plant_state)
+        simSetGraphUserData(self.pid_state_graph, "dx", self.position_controller.plant_speed)
+        simSetGraphUserData(self.pid_state_graph, "xr", self.position_controller.setpoint)
     end
 
     -- self:setForce(self:getThrottle())
@@ -245,7 +252,7 @@ function VehicleLogitechG920ControllerHandler:refresh()
 end
 
 function VehicleLogitechG920ControllerHandler:setForce(force)
-    simExtJoySetForces(self.joyId, -force)
+    simExtJoySetForces(self.joyId, force)
 end
 
 function VehicleLogitechG920ControllerHandler:isStartPressed()
@@ -315,7 +322,7 @@ function VehicleLogitechG920ControllerHandler:isGearReversePressed()
 end
 
 function VehicleLogitechG920ControllerHandler:getSteering()
-    return self.joyState.axes[1] / 1000.0
+    return -(self.joyState.axes[1] / 1000.0)
 end
 
 function VehicleLogitechG920ControllerHandler:getThrottle()
