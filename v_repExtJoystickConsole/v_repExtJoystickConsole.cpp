@@ -29,6 +29,14 @@ BOOL WINAPI consoleHandler(DWORD signal) {
 }
 
 int run() {
+
+	HWND handle = nullptr;
+	handle = FindWindowA(NULL, "E:\\OneDrive\\Projetos\\VREPExtensionJoystick\\Debug\\v_repExtJoystickConsole.exe");
+	if (!handle) {
+		printf("Could not get window handle.\n");
+	}
+	v_repExtJoystick::setWindowHandle(handle);
+
 	std::cout << "v_repExtJoystick" << std::endl;
 	std::cout << "Joystick count: " << v_repExtJoystick::getJoyCount() << std::endl;
 
@@ -49,7 +57,7 @@ int run() {
 
 	int joy_id = 0;
 	//v_repExtJoystick::enableJoyForceControl(joy_id);
-	v_repExtJoystick::setJoyForces(joy_id, { 1.0f, 1.0f });
+	v_repExtJoystick::setJoyForces(joy_id, { 0.2f, 0.0f });
 	Sleep(5000);
 	//v_repExtJoystick::disableJoyForceControl(joy_id);
 

@@ -17,6 +17,7 @@ namespace v_repExtJoystick {
 		volatile bool joyGoodToRead = false;
 		LPDIRECTINPUT8 di;
 
+		HWND winHandle = nullptr;
 		Joystick joysticks[4];
 		int currentDeviceIndex = 0;
 		int joystickCount = 0;
@@ -80,6 +81,68 @@ namespace v_repExtJoystick {
 			return DIENUM_CONTINUE;
 		}
 
+		INT normalizedForceToDInputForce(float nforce) {
+			INT force = (INT)(nforce*DI_FFNOMINALMAX);
+
+			// Keep force within bounds
+			if (force < -DI_FFNOMINALMAX)
+				force = -DI_FFNOMINALMAX;
+
+			if (force > +DI_FFNOMINALMAX)
+				force = +DI_FFNOMINALMAX;
+
+			return force;
+		}
+
+		bool setJoyForces(Joystick& joy) {
+			INT xforce = normalizedForceToDInputForce(joy.forces[0]);
+			INT yforce = normalizedForceToDInputForce(joy.forces[1]);
+
+			// Modifying an effect is basically the same as creating a new one, except
+			// you need only specify the parameters you are modifying
+			LONG rglDirection[2] = { 0, 0 };
+			DICONSTANTFORCE cf;
+
+			if (joy.num_force_axes == 1)
+			{
+				// If only one force feedback axis, then apply only one direction and 
+				// keep the direction at zero
+				cf.lMagnitude = xforce;
+				rglDirection[0] = 0;
+			}
+			else
+			{
+				// If two force feedback axis, then apply magnitude from both directions 
+				rglDirection[0] = xforce;
+				rglDirection[1] = yforce;
+				cf.lMagnitude = (DWORD)sqrt((double)xforce * xforce +
+					(double)yforce * (double)yforce);
+			}
+
+			//printf("Setting force to (x = %d, y = %d, mag = %d).\n", rglDirection[0], rglDirection[1], cf.lMagnitude);
+
+			DIEFFECT eff;
+			ZeroMemory(&eff, sizeof(eff));
+			eff.dwSize = sizeof(DIEFFECT);
+			eff.dwFlags = DIEFF_CARTESIAN | DIEFF_OBJECTOFFSETS;
+			eff.cAxes = joy.num_force_axes;
+			eff.rglDirection = rglDirection;
+			eff.lpEnvelope = 0;
+			eff.cbTypeSpecificParams = sizeof(DICONSTANTFORCE);
+			eff.lpvTypeSpecificParams = &cf;
+			eff.dwStartDelay = 0;
+
+			// Now set the new parameters and start the effect immediately.
+			if (FAILED(joy.force_effect->SetParameters(&eff, DIEP_DIRECTION |
+				DIEP_TYPESPECIFICPARAMS |
+				DIEP_START))) {
+				printf("Failed at 'joy.force_effect->SetParameters'.\n");
+				return false;
+			}
+
+			return true;
+		}
+
 		DWORD WINAPI _joyThread(LPVOID lpParam)
 		{
 			_inJoyThread = true;
@@ -130,9 +193,21 @@ namespace v_repExtJoystick {
 					if (FAILED(hr = joy.handle->SetDataFormat(&c_dfDIJoystick2)))
 						printf("Failed at 'SetDataFormat'.\n");
 
-					if (FAILED(hr = joy.handle->SetCooperativeLevel(nullptr, DISCL_EXCLUSIVE | DISCL_FOREGROUND)))
-						(void)0;// do not output an error here!      printf("Failed at 'SetCooperativeLevel'.\n");
+					// If no window handle is provided, it is not possible to acquire exclusive level.
+					// Exclusive level is required to apply forces on joysticks.
 					// http://stackoverflow.com/a/13939469/702828
+					// https://msdn.microsoft.com/en-us/library/windows/desktop/ee416848(v=vs.85).aspx
+					// https://www.microsoft.com/msj/0298/force.aspx
+					DWORD cooperative_level = DISCL_NONEXCLUSIVE | DISCL_BACKGROUND;
+					if (winHandle) {
+						printf("Window handle was provided, force control is enabled.\n");
+						cooperative_level = DISCL_EXCLUSIVE | DISCL_BACKGROUND;
+					}
+					else {
+						printf("No window handle was provided, force control is disabled.\n");
+					}
+					if (FAILED(hr = joy.handle->SetCooperativeLevel(winHandle, cooperative_level)))
+						printf("Failed at 'SetCooperativeLevel'.\n");
 
 					joy.capabilities.dwSize = sizeof(DIDEVCAPS);
 					if (FAILED(hr = joy.handle->GetCapabilities(&joy.capabilities)))
@@ -246,6 +321,8 @@ namespace v_repExtJoystick {
 						{
 							if (FAILED(hr = joysticks[i].handle->GetDeviceState(sizeof(DIJOYSTATE2), &joysticks[i].state)))
 								printf("Failed at 'GetDeviceState'\n");
+
+							setJoyForces(joysticks[i]);
 						}
 					}
 				}
@@ -299,18 +376,6 @@ namespace v_repExtJoystick {
 			}
 		}
 
-		INT normalizedForceToDInputForce(float nforce) {
-			INT force = (INT)nforce*DI_FFNOMINALMAX;
-
-			// Keep force within bounds
-			if (force < -DI_FFNOMINALMAX)
-				force = -DI_FFNOMINALMAX;
-
-			if (force > +DI_FFNOMINALMAX)
-				force = +DI_FFNOMINALMAX;
-
-			return force;
-		}
 
 	} // private namespace
 
@@ -341,6 +406,12 @@ namespace v_repExtJoystick {
 		//
 
 		AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	}
+
+	DLLEXPORT void setWindowHandle(HWND handle) {
+		manageState();
+		printf("Setting window handle.\n");
+		winHandle = handle;
 	}
 
 	DLLEXPORT void start()
@@ -418,54 +489,7 @@ namespace v_repExtJoystick {
 			return false;
 
 		Joystick& joy = joysticks[joyId];
-
 		joy.forces = forces;
-		INT xforce = normalizedForceToDInputForce(joy.forces[0]);
-		INT yforce = normalizedForceToDInputForce(joy.forces[1]);
-		xforce = DI_FFNOMINALMAX / 2;
-		yforce = DI_FFNOMINALMAX / 2;
-
-		// Modifying an effect is basically the same as creating a new one, except
-		// you need only specify the parameters you are modifying
-		LONG rglDirection[2] = { 0, 0 };
-		DICONSTANTFORCE cf;
-
-		if (joy.num_force_axes == 1)
-		{
-			// If only one force feedback axis, then apply only one direction and 
-			// keep the direction at zero
-			cf.lMagnitude = xforce;
-			rglDirection[0] = 0;
-		}
-		else
-		{
-			// If two force feedback axis, then apply magnitude from both directions 
-			rglDirection[0] = xforce;
-			rglDirection[1] = yforce;
-			cf.lMagnitude = (DWORD)sqrt((double)xforce * xforce +
-				(double)yforce * (double)yforce);
-		}
-
-		printf("Setting force to (x = %d, y = %d, mag = %d).\n", rglDirection[0], rglDirection[1], cf.lMagnitude);
-
-		DIEFFECT eff;
-		ZeroMemory(&eff, sizeof(eff));
-		eff.dwSize = sizeof(DIEFFECT);
-		eff.dwFlags = DIEFF_CARTESIAN | DIEFF_OBJECTOFFSETS;
-		eff.cAxes = joy.num_force_axes;
-		eff.rglDirection = rglDirection;
-		eff.lpEnvelope = 0;
-		eff.cbTypeSpecificParams = sizeof(DICONSTANTFORCE);
-		eff.lpvTypeSpecificParams = &cf;
-		eff.dwStartDelay = 0;
-
-		// Now set the new parameters and start the effect immediately.
-		if (FAILED(joy.force_effect->SetParameters(&eff, DIEP_DIRECTION |
-			DIEP_TYPESPECIFICPARAMS |
-			DIEP_START))) {
-			printf("Failed at 'joy.force_effect->SetParameters'.\n");
-			return false;
-		}
 
 		return true;
 	}

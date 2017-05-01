@@ -27,6 +27,7 @@ namespace v_repExtJoystick {
 
 	};
 
+	DLLEXPORT void setWindowHandle(HWND handle);
 	DLLEXPORT void start();
 	DLLEXPORT void stop();
 

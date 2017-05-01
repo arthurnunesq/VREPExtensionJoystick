@@ -7,7 +7,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "v_repExtJoystick", "v_repEx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "v_repExtJoystickConsole", "v_repExtJoystickConsole\v_repExtJoystickConsole.vcxproj", "{9993733C-4121-414A-B4C6-F7F4EED07621}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FFConst", "DirectInputSamples\C++\FFConst\FFConst_11.vcxproj", "{1848A811-1C48-4B83-9B9C-D21D0BE14FF8}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FFConst", "FFConst\FFConst_11.vcxproj", "{1848A811-1C48-4B83-9B9C-D21D0BE14FF8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
