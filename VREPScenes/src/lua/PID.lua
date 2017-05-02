@@ -1,5 +1,6 @@
 require 'class'
 api = require('api')
+LowPassFilter = require('LowPassFilter')
 
 -- https://bitbucket.org/AndyZe/pid/src/31105f05b463573c020800d2cef81307d9a98579/src/controller.cpp?at=master&fileviewer=file-view-default
 -- http://www.topcontrol.com/fichiers/en/combatingstiction.pdf
@@ -32,23 +33,27 @@ local PID = class(function(self)
     self.windup_limit = 1000
 
     -- Stiction params
-    self.deadband = 0.03
-    self.integral_threshold = 0.00
-    self.effort_bump = 0.12
-    self.speed_threshold = 0.01
+    self.deadband = 0.000                   -- If deadband is removed from the error to calculate integral and proportional actions.
+    self.integral_threshold = 0.000          -- If error is below this threshold, no integral action is applied
+    self.effort_bump = 0.12                 -- If speed is under threshold and error is high, adds bias to control effort
+    self.effort_bump_speed_threshold = 0.00 -- Speed threshold for the bump bias
 
-    self.Kp = 5.0
-    self.Kd = 0.0
-    self.Ki = 0.5
+    -- Gains
+    self.Kp = 3.0
+    self.Kd = 1.2
+    self.Ki = 1.5
 
+    -- Filtering
+    sample_rate = 1/simGetSimulationTimeStep()
+    self.error_filter = LowPassFilter(sample_rate, sample_rate/4)
+    self.error_deriv_filter = LowPassFilter(sample_rate, sample_rate/8)
+
+    -- Errors
     self.error = {0.0, 0.0, 0.0}
     self.error_without_deadband = 0.0
+    self.filtered_error_without_deadband = 0.0
     self.error_deriv = {0.0, 0.0, 0.0}
 end)
-
--- function PID:setpoint(setpoint)
---     self.setpoint = setpoint
--- end
 
 function PID.apply_deadband(ui, deadband)
     local uo = 0.0
@@ -108,6 +113,9 @@ function PID:step(plant_state)
     self.error[2] = self.error[1];
     self.error[1] = self.setpoint - self.plant_state; -- Current error goes to slot 0
     self.error_without_deadband = PID.apply_deadband(self.error[1], self.deadband)
+    self.error_filter:process(self.error[1])
+    self.filtered_error_without_deadband = PID.apply_deadband(self.error_filter.y[1], self.deadband)
+
 
     -- integrate the error
     self.error_integral = self.error_integral + self.error_without_deadband * self.delta_t;
@@ -120,12 +128,16 @@ function PID:step(plant_state)
     if(self.delta_t > 0.0) then
         self.error_deriv[1] = (self.error[1] - self.error[2])/self.delta_t;
     end
+    self.error_deriv_filter:process(self.error_deriv[1])
 
     -- calculate the control effort
-    self.proportional = self.Kp * self.error_without_deadband --filtered_error[0]
+    self.proportional = self.Kp * self.filtered_error_without_deadband --self.error_without_deadband --filtered_error[0]
     self.integral = self.Ki * self.error_integral
-    self.derivative = self.Kd * self.error_deriv[1] --filtered_error_deriv[0]
-    self.control_effort = self.proportional + self.integral + self.derivative
+    self.derivative = self.Kd * self.error_deriv_filter.y[1]--self.error_deriv[1] --filtered_error_deriv[0]
+    self.control_effort = self.proportional + self.derivative
+    if(math.abs(self.error_filter.y[1]) >= self.integral_threshold) then
+        self.control_effort = self.control_effort + self.integral
+    end
     self.control_effort = api.saturate(self.control_effort, self.lower_limit, self.upper_limit)
     --self.control_effort = PID.apply_bump(self.control_effort, self.error_without_deadband, self.plant_speed, self.speed_threshold, self.effort_bump)
 

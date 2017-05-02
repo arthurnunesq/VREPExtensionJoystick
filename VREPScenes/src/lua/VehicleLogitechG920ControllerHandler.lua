@@ -37,6 +37,7 @@ local VehicleLogitechG920ControllerHandler = class(ModelComponentScriptBase, fun
     -- ==============================================================
     self.joyId = simGetScriptSimulationParameter(self.scriptHandle, 'joyId')
     self.throttleSensibility = simGetScriptSimulationParameter(self.scriptHandle, 'throttleSensibility')
+    self.max_steering_position_ref = 0.9
 
     -- ==============================================================
     -- SIGNALS DEFINITIONS
@@ -178,7 +179,7 @@ function VehicleLogitechG920ControllerHandler:actuation()
 
     -- Position control ============================================== 
 
-    self.position_controller.setpoint = self:getThrottle()
+    self.position_controller.setpoint = api.saturate(self:getThrottle(), -self.max_steering_position_ref, self.max_steering_position_ref)
     self.position_controller:step(self:getSteering())
     self:setForce(self.position_controller.control_effort)
 
@@ -186,6 +187,8 @@ function VehicleLogitechG920ControllerHandler:actuation()
         simSetGraphUserData(self.pid_graph, "e", self.position_controller.error[1])
         simSetGraphUserData(self.pid_graph, "u", self.position_controller.control_effort)
         simSetGraphUserData(self.pid_graph, "de", self.position_controller.error_deriv[1])
+        simSetGraphUserData(self.pid_graph, "e_f", self.position_controller.error_filter.y[1])
+        simSetGraphUserData(self.pid_graph, "de_f", self.position_controller.error_deriv_filter.y[1])
     end    
     if(self.pid_state_graph ~= nil) then
         simSetGraphUserData(self.pid_state_graph, "x", self.position_controller.plant_state)
